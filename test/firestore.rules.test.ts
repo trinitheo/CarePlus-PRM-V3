@@ -14,7 +14,9 @@ import {
   updateDoc,
   deleteDoc,
   collection,
-  getDocs
+  getDocs,
+  query,
+  where
 } from 'firebase/firestore';
 
 const PROJECT_ID = 'careplus-v2-test';
@@ -29,7 +31,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       firestore: {
         rules,
         host: '127.0.0.1',
-        port: 8080
+        port: 8088
       }
     });
   });
@@ -398,6 +400,130 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(deleteDoc(doc(dbAdmin, 'care_teams/patient_A_dr_smith')));
       await assertFails(deleteDoc(doc(dbClinician, 'patients/patient_A/notes/note_smith')));
       await assertFails(deleteDoc(doc(dbAdmin, 'patients/patient_A')));
+    });
+  });
+
+  // ==========================================
+  // 18 SCENARIOS FROM PROBES2.TS
+  // ==========================================
+  describe('Probes2 Review Scenarios', () => {
+    // --- controls ---
+    it('ALLOW: C1 clinician on the team reads a note', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(getDoc(doc(db, 'patients/patient_A/notes/note_smith')));
+    });
+
+    it('DENY: C2 nurse on A reads patient B', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(getDoc(doc(db, 'patients/patient_B')));
+    });
+
+    // --- problems found in review ---
+    it('DENY: P1 nurse sets patient_A.linkedUserId to her own account', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(updateDoc(doc(db, 'patients/patient_A'), { linkedUserId: 'nurse_amy' }));
+    });
+
+    it('DENY: P2 nurse links herself, is removed from the team, still reads the chart', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(updateDoc(doc(db, 'patients/patient_A'), { linkedUserId: 'nurse_amy' }));
+      await testEnv.withSecurityRulesDisabled(ctx =>
+        updateDoc(doc(ctx.firestore(), 'care_teams/patient_A_nurse_amy'), { status: 'removed' }));
+      await assertFails(getDoc(doc(db, 'patients/patient_A/notes/note_smith')));
+    });
+
+    it('DENY: P3 nurse removes the clinician from the team', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(updateDoc(doc(db, 'care_teams/patient_A_dr_smith'), { status: 'removed', removedAt: '2026-03-01' }));
+    });
+
+    it('ALLOW: P4 patient reads the name of their own clinician', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertSucceeds(getDoc(doc(db, 'users/dr_smith')));
+    });
+
+    it('DENY: P5 nurse reads the user record of a patient who is not hers', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(getDoc(doc(db, 'users/patient_user_b')));
+    });
+
+    it('ALLOW: P6 clinician lists their own care-team assignments', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(getDocs(query(collection(db, 'care_teams'), where('userId', '==', 'dr_smith'))));
+    });
+
+    it('DENY: P7 clinician relabels their clinic vital as patient-entered', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'patients/patient_A/vitals/vital_1'), { source: 'patient' }));
+    });
+
+    it('ALLOW: P8 active clinician adds a nurse to their own patient team', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(setDoc(doc(db, 'care_teams/patient_A_nurse_bob'), {
+        patientId: 'patient_A',
+        userId: 'nurse_bob',
+        role: 'nurse',
+        status: 'active'
+      }));
+    });
+
+    // --- safety checks on the fixes ---
+    it('ALLOW: S1 patient lists their own care team', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertSucceeds(getDocs(query(collection(db, 'care_teams'), where('patientId', '==', 'patient_A'))));
+    });
+
+    it('ALLOW: S2 active clinician removes a nurse from the team', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(updateDoc(doc(db, 'care_teams/patient_A_nurse_amy'), {
+        status: 'removed',
+        removedAt: '2026-03-01'
+      }));
+    });
+
+    it('ALLOW: S3 care-team member updates the patient phone number', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(updateDoc(doc(db, 'patients/patient_A'), { phone: '2' }));
+    });
+
+    it('DENY: S4 clinician on A forges a team entry to reach patient B', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'care_teams/patient_B_dr_smith'), {
+        patientId: 'patient_A',
+        userId: 'dr_smith',
+        role: 'clinician',
+        status: 'active'
+      }));
+    });
+
+    it('DENY: S5 clinician adds a nurse under the wrong role', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'care_teams/patient_A_nurse_bob'), {
+        patientId: 'patient_A',
+        userId: 'nurse_bob',
+        role: 'clinician',
+        status: 'active'
+      }));
+    });
+
+    it('DENY: S6 nurse adds someone to the team', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(setDoc(doc(db, 'care_teams/patient_A_nurse_bob'), {
+        patientId: 'patient_A',
+        userId: 'nurse_bob',
+        role: 'nurse',
+        status: 'active'
+      }));
+    });
+
+    it('DENY: S7 patient reads another patient user record', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertFails(getDoc(doc(db, 'users/patient_user_b')));
+    });
+
+    it('DENY: S8 clinician changes the patient MRN', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'patients/patient_A'), { mrn: 'X' }));
     });
   });
 });

@@ -123,7 +123,7 @@ export default function App() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-stone-200 gap-3">
             <div>
               <h2 className="text-base font-semibold text-stone-900">Security Rule Test Verification Matrix</h2>
-              <p className="text-xs text-stone-500">29/29 Test Assertions Verified (16 ALLOWED actions, 13 DENIED actions)</p>
+              <p className="text-xs text-stone-500">Care team membership-driven access control matrix</p>
             </div>
             <div className="flex items-center space-x-2">
               <button

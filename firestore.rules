@@ -2,7 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -11,168 +10,138 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // 1. Admin comes ONLY from users/{uid}.role == 'admin'. Never hardcoded email.
+    // Admin comes ONLY from users/{uid}.role == 'admin'.
     function isAdmin() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         getUserData().role == 'admin';
     }
 
-    // 2. Four roles only in v1: clinician, nurse, patient, admin.
     function isClinician() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         getUserData().role == 'clinician';
     }
 
-    function isNurse() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role == 'nurse';
-    }
-
-    function isPatient() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role == 'patient';
-    }
-
-    function isStaff() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (getUserData().role in ['clinician', 'nurse', 'admin']);
-    }
-
     function isLinkedPatient(patientId) {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         exists(/databases/$(database)/documents/patients/$(patientId)) &&
         get(/databases/$(database)/documents/patients/$(patientId)).data.linkedUserId == request.auth.uid;
     }
 
+    // Single source of truth for membership: care_teams/{patientId}_{uid}.
     function isActiveCareTeamMember(patientId) {
-      return isAuthenticated() && (
-        (exists(/databases/$(database)/documents/care_teams/$(patientId + '_' + request.auth.uid)) &&
-         get(/databases/$(database)/documents/care_teams/$(patientId + '_' + request.auth.uid)).data.status == 'active') ||
-        (exists(/databases/$(database)/documents/patients/$(patientId)/care_team/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/patients/$(patientId)/care_team/$(request.auth.uid)).data.status == 'active')
-      );
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/care_teams/$(patientId + '_' + request.auth.uid)) &&
+        get(/databases/$(database)/documents/care_teams/$(patientId + '_' + request.auth.uid)).data.status == 'active';
     }
 
     function isActiveClinicianOnTeam(patientId) {
       return isClinician() && isActiveCareTeamMember(patientId);
     }
 
-    // 6. users/{uid}: self-updates may change only displayName and phone
+    function onlyChanges(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
     match /users/{userId} {
-      allow get: if isAuthenticated() && (request.auth.uid == userId || isAdmin() || isStaff());
+      // Staff profiles are readable by any signed-in user, so a patient can see
+      // who is on their care team. Patient and admin records: self and admin only.
+      allow get: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        resource.data.role in ['clinician', 'nurse']);
       allow list: if isAdmin();
       allow create: if isAdmin();
-      allow update: if isAdmin() || 
-                    (isAuthenticated() && 
-                     request.auth.uid == userId && 
-                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone']));
+      allow update: if isAdmin() ||
+        (isAuthenticated() && request.auth.uid == userId && onlyChanges(['displayName', 'phone']));
       allow delete: if false;
     }
 
-    // 3. patients/{patientId}
     match /patients/{patientId} {
-      // get: admin, active care-team member, or linked patient. Not all staff.
-      allow get: if isAdmin() || 
-                    isActiveCareTeamMember(patientId) || 
-                    (isAuthenticated() && resource.data.linkedUserId == request.auth.uid);
+      allow get: if isAdmin() ||
+        isActiveCareTeamMember(patientId) ||
+        (isAuthenticated() && resource.data.linkedUserId == request.auth.uid);
 
-      // list: admin only.
       allow list: if isAdmin();
 
-      // create: admin only, with keys().hasOnly() limiting it to identity fields
-      allow create: if isAdmin() && 
-                    request.resource.data.keys().hasOnly([
-                      'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'linkedUserId', 'createdAt'
-                    ]);
+      allow create: if isAdmin() &&
+        request.resource.data.keys().hasOnly([
+          'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'linkedUserId', 'createdAt'
+        ]);
 
-      // update: admin or active care-team member. A linked patient may change only phone and email, never linkedUserId or mrn.
-      allow update: if isAdmin() || 
-                    isActiveCareTeamMember(patientId) || 
-                    (isAuthenticated() && 
-                     resource.data.linkedUserId == request.auth.uid && 
-                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'email']) &&
-                     request.resource.data.linkedUserId == resource.data.linkedUserId &&
-                     request.resource.data.mrn == resource.data.mrn);
+      // Identity fields (mrn, name, dob, linkedUserId) change only through admin.
+      // linkedUserId is an access grant, so no one else may touch it.
+      allow update: if isAdmin() ||
+        ((isActiveCareTeamMember(patientId) ||
+          (isAuthenticated() && resource.data.linkedUserId == request.auth.uid)) &&
+         onlyChanges(['phone', 'email']));
 
       allow delete: if false;
 
-      // 5. Clinical records subcollections
-      // notes
       match /notes/{noteId} {
-        // Admin does not get chart access.
         allow read: if isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        allow create: if isActiveCareTeamMember(patientId) && 
+        allow create: if isActiveCareTeamMember(patientId) &&
                       request.resource.data.authorId == request.auth.uid;
-        // notes update: author only AND still an active care-team member.
-        allow update: if resource.data.authorId == request.auth.uid && 
+        allow update: if resource.data.authorId == request.auth.uid &&
                          isActiveCareTeamMember(patientId) &&
                          request.resource.data.authorId == resource.data.authorId;
         allow delete: if false;
       }
 
-      // vitals
       match /vitals/{vitalId} {
-        // Admin does not get chart access.
         allow read: if isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        // Patients may add vitals, but patient-entered vitals must have source == 'patient'. Staff-entered vitals must have source == 'clinic'.
-        allow create: if (isLinkedPatient(patientId) && 
-                          request.resource.data.source == 'patient' && 
+        allow create: if (isLinkedPatient(patientId) &&
+                          request.resource.data.source == 'patient' &&
                           request.resource.data.authorId == request.auth.uid) ||
-                         (isActiveCareTeamMember(patientId) && 
-                          request.resource.data.source == 'clinic' && 
+                         (isActiveCareTeamMember(patientId) &&
+                          request.resource.data.source == 'clinic' &&
                           request.resource.data.authorId == request.auth.uid);
-        // vitals update: author only AND still active; authorId can never change.
-        allow update: if resource.data.authorId == request.auth.uid && 
-                         isActiveCareTeamMember(patientId) && 
-                         request.resource.data.authorId == resource.data.authorId;
+        // Author only, still active; author and source can never change.
+        allow update: if resource.data.authorId == request.auth.uid &&
+                         isActiveCareTeamMember(patientId) &&
+                         request.resource.data.authorId == resource.data.authorId &&
+                         request.resource.data.source == resource.data.source;
         allow delete: if false;
       }
 
-      // prescriptions
       match /prescriptions/{prescriptionId} {
-        // Admin does not get chart access.
         allow read: if isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        allow create: if isActiveClinicianOnTeam(patientId) && 
+        allow create: if isActiveClinicianOnTeam(patientId) &&
                       request.resource.data.authorId == request.auth.uid;
-        // prescriptions update: any active clinician on the team; authorId can never change.
-        allow update: if isActiveClinicianOnTeam(patientId) && 
+        allow update: if isActiveClinicianOnTeam(patientId) &&
                          request.resource.data.authorId == resource.data.authorId;
-        allow delete: if false;
-      }
-
-      // care_team subcollection
-      match /care_team/{memberId} {
-        allow read: if isAdmin() || isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        allow create: if isAdmin();
-        allow update: if isAdmin() || 
-                         (isActiveCareTeamMember(patientId) && 
-                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'removedAt']) &&
-                          request.resource.data.status == 'removed');
         allow delete: if false;
       }
     }
 
-    // 4. Top-level care_teams collection
     match /care_teams/{teamMemberId} {
-      // read: admin, active member of that team, or the linked patient.
-      allow read: if isAdmin() || 
-                     isActiveCareTeamMember(resource.data.patientId) || 
-                     isLinkedPatient(resource.data.patientId);
+      // Members can always see their own entries (their patient list). Active
+      // team members and the linked patient can see the whole team.
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin() ||
+        isActiveCareTeamMember(resource.data.patientId) ||
+        isLinkedPatient(resource.data.patientId));
 
-      allow create: if isAdmin();
+      // The document ID is what grants access, so it must equal
+      // {patientId}_{userId}. Role must match the user's real role.
+      allow create: if (isAdmin() || isActiveClinicianOnTeam(request.resource.data.patientId)) &&
+        teamMemberId == request.resource.data.patientId + '_' + request.resource.data.userId &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.role in ['clinician', 'nurse'] &&
+        exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) &&
+        get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == request.resource.data.role;
 
-      // update: removal sets status: 'removed' so there is a record of who had access and when.
-      allow update: if isAdmin() || 
-                       (isActiveCareTeamMember(resource.data.patientId) && 
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'removedAt']) &&
-                        request.resource.data.status == 'removed');
+      // Removal only, keeping history. Admin or an active clinician on the team;
+      // nurses cannot remove anyone. patientId and userId never change.
+      allow update: if request.resource.data.patientId == resource.data.patientId &&
+        request.resource.data.userId == resource.data.userId &&
+        (isAdmin() ||
+         (isActiveClinicianOnTeam(resource.data.patientId) &&
+          onlyChanges(['status', 'removedAt']) &&
+          request.resource.data.status == 'removed'));
 
-      // no delete
       allow delete: if false;
     }
   }
