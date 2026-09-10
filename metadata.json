@@ -1,0 +1,6 @@
+{
+  "name": "CarePlus v2",
+  "description": "A patient relationship management system centering the care team with role-based care team access control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
