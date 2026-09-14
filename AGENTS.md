@@ -11,6 +11,16 @@ the center of the product. It works in two directions:
 clinician, nurse, patient, admin. No other roles until I ask for them.
 
 ## Non-negotiables
+- CarePlus serves many organizations. Every patient, care team and staff
+  account belongs to exactly one organization. Nothing crosses organizations.
+- A staff account (clinician, nurse, admin) belongs to exactly one
+  organization, and its orgId can never change. Someone who works at two
+  organizations has two accounts.
+- Patients sign in with their own email. One patient login may be linked to
+  patient records at several organizations through linkedUserId.
+- The platform owner is identified only by a custom auth claim
+  (request.auth.token.platformOwner == true), set server-side. It is never a
+  field any client can write.
 - Access to any patient data comes from active membership in that patient's
   care team (or being that patient). Never from role alone.
 - Admin manages accounts and roles. Admin does not get chart access.

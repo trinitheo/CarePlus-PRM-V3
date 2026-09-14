@@ -6,141 +6,244 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isPlatformOwner() {
+      return isAuthenticated() &&
+        ('platformOwner' in request.auth.token) &&
+        request.auth.token.platformOwner == true;
+    }
+
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Admin comes ONLY from users/{uid}.role == 'admin'.
-    function isAdmin() {
+    function isOrgStaff(orgId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().orgId == orgId &&
+        getUserData().role in ['clinician', 'nurse', 'admin'];
+    }
+
+    function isOrgAdmin(orgId) {
+      return isOrgStaff(orgId) && getUserData().role == 'admin';
+    }
+
+    function isAnyAdmin() {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         getUserData().role == 'admin';
     }
 
-    function isClinician() {
+    function isOrgClinician(orgId) {
+      return isOrgStaff(orgId) && getUserData().role == 'clinician';
+    }
+
+    function isLinkedPatient(orgId, patientId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)) &&
+        get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)).data.linkedUserId == request.auth.uid;
+    }
+
+    // Care-team access is for clinicians and nurses only.
+    // Admin can never gain chart access by being on a team.
+    function isActiveCareTeamMember(orgId, patientId) {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role == 'clinician';
+        getUserData().orgId == orgId &&
+        getUserData().role in ['clinician', 'nurse'] &&
+        exists(/databases/$(database)/documents/organizations/$(orgId)/care_teams/$(patientId + '_' + request.auth.uid)) &&
+        get(/databases/$(database)/documents/organizations/$(orgId)/care_teams/$(patientId + '_' + request.auth.uid)).data.status == 'active';
     }
 
-    function isLinkedPatient(patientId) {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/patients/$(patientId)) &&
-        get(/databases/$(database)/documents/patients/$(patientId)).data.linkedUserId == request.auth.uid;
-    }
-
-    // Single source of truth for membership: care_teams/{patientId}_{uid}.
-    function isActiveCareTeamMember(patientId) {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/care_teams/$(patientId + '_' + request.auth.uid)) &&
-        get(/databases/$(database)/documents/care_teams/$(patientId + '_' + request.auth.uid)).data.status == 'active';
-    }
-
-    function isActiveClinicianOnTeam(patientId) {
-      return isClinician() && isActiveCareTeamMember(patientId);
+    function isActiveClinicianOnTeam(orgId, patientId) {
+      return isOrgClinician(orgId) && isActiveCareTeamMember(orgId, patientId);
     }
 
     function onlyChanges(fields) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
-    match /users/{userId} {
-      // Staff profiles are readable by any signed-in user, so a patient can see
-      // who is on their care team. Patient and admin records: self and admin only.
-      allow get: if isAuthenticated() && (
-        request.auth.uid == userId ||
-        isAdmin() ||
-        resource.data.role in ['clinician', 'nurse']);
-      allow list: if isAdmin();
-      allow create: if isAdmin();
-      allow update: if isAdmin() ||
-        (isAuthenticated() && request.auth.uid == userId && onlyChanges(['displayName', 'phone']));
-      allow delete: if false;
-    }
+    // 1. Organizations
+    match /organizations/{orgId} {
+      // Platform owner can create. Must contain name, createdAt, and firstAdminUid.
+      allow create: if isPlatformOwner() &&
+        request.resource.data.keys().hasOnly(['name', 'createdAt', 'firstAdminUid']) &&
+        request.resource.data.name is string &&
+        request.resource.data.firstAdminUid is string;
 
-    match /patients/{patientId} {
-      allow get: if isAdmin() ||
-        isActiveCareTeamMember(patientId) ||
-        (isAuthenticated() && resource.data.linkedUserId == request.auth.uid);
+      // Read by that organization's staff and by the platform owner.
+      allow get, list: if isPlatformOwner() || isOrgStaff(orgId);
 
-      allow list: if isAdmin();
+      allow update, delete: if false;
 
-      allow create: if isAdmin() &&
-        request.resource.data.keys().hasOnly([
-          'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'linkedUserId', 'createdAt'
-        ]);
+      // 2. Patients in organization
+      match /patients/{patientId} {
+        // Admin manages accounts and patient records, active care-team members, or the linked patient
+        allow get: if isOrgAdmin(orgId) ||
+          isActiveCareTeamMember(orgId, patientId) ||
+          (isAuthenticated() && resource.data.linkedUserId == request.auth.uid);
 
-      // Identity fields (mrn, name, dob, linkedUserId) change only through admin.
-      // linkedUserId is an access grant, so no one else may touch it.
-      allow update: if isAdmin() ||
-        ((isActiveCareTeamMember(patientId) ||
-          (isAuthenticated() && resource.data.linkedUserId == request.auth.uid)) &&
-         onlyChanges(['phone', 'email']));
+        allow list: if isOrgAdmin(orgId);
 
-      allow delete: if false;
+        allow create: if isOrgAdmin(orgId) &&
+          request.resource.data.keys().hasOnly([
+            'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'linkedUserId', 'createdAt'
+          ]);
 
-      match /notes/{noteId} {
-        allow read: if isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        allow create: if isActiveCareTeamMember(patientId) &&
-                      request.resource.data.authorId == request.auth.uid;
-        allow update: if resource.data.authorId == request.auth.uid &&
-                         isActiveCareTeamMember(patientId) &&
-                         request.resource.data.authorId == resource.data.authorId;
+        // Identity fields (mrn, name, dob, linkedUserId) change only through admin.
+        allow update: if isOrgAdmin(orgId) ||
+          ((isActiveCareTeamMember(orgId, patientId) ||
+            (isAuthenticated() && resource.data.linkedUserId == request.auth.uid)) &&
+           onlyChanges(['phone', 'email']));
+
         allow delete: if false;
+
+        match /notes/{noteId} {
+          allow read: if isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId);
+          allow create: if isActiveCareTeamMember(orgId, patientId) &&
+                        request.resource.data.authorId == request.auth.uid;
+          allow update: if resource.data.authorId == request.auth.uid &&
+                           isActiveCareTeamMember(orgId, patientId) &&
+                           request.resource.data.authorId == resource.data.authorId;
+          allow delete: if false;
+        }
+
+        match /vitals/{vitalId} {
+          allow read: if isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId);
+          allow create: if (isLinkedPatient(orgId, patientId) &&
+                            request.resource.data.source == 'patient' &&
+                            request.resource.data.authorId == request.auth.uid) ||
+                           (isActiveCareTeamMember(orgId, patientId) &&
+                            request.resource.data.source == 'clinic' &&
+                            request.resource.data.authorId == request.auth.uid);
+          allow update: if resource.data.authorId == request.auth.uid &&
+                           isActiveCareTeamMember(orgId, patientId) &&
+                           request.resource.data.authorId == resource.data.authorId &&
+                           request.resource.data.source == resource.data.source;
+          allow delete: if false;
+        }
+
+        match /prescriptions/{prescriptionId} {
+          allow read: if isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId);
+          allow create: if isActiveClinicianOnTeam(orgId, patientId) &&
+                        request.resource.data.authorId == request.auth.uid;
+          allow update: if isActiveClinicianOnTeam(orgId, patientId) &&
+                           request.resource.data.authorId == resource.data.authorId;
+          allow delete: if false;
+        }
       }
 
-      match /vitals/{vitalId} {
-        allow read: if isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        allow create: if (isLinkedPatient(patientId) &&
-                          request.resource.data.source == 'patient' &&
-                          request.resource.data.authorId == request.auth.uid) ||
-                         (isActiveCareTeamMember(patientId) &&
-                          request.resource.data.source == 'clinic' &&
-                          request.resource.data.authorId == request.auth.uid);
-        // Author only, still active; author and source can never change.
-        allow update: if resource.data.authorId == request.auth.uid &&
-                         isActiveCareTeamMember(patientId) &&
-                         request.resource.data.authorId == resource.data.authorId &&
-                         request.resource.data.source == resource.data.source;
-        allow delete: if false;
-      }
+      // 3. Care teams in organization
+      match /care_teams/{teamMemberId} {
+        // Members can see their own entries. Active team members, org admin, and linked patient can see the team.
+        // Platform owner cannot read.
+        allow read: if isAuthenticated() && !isPlatformOwner() && (
+          resource.data.userId == request.auth.uid ||
+          isOrgAdmin(orgId) ||
+          isActiveCareTeamMember(orgId, resource.data.patientId) ||
+          isLinkedPatient(orgId, resource.data.patientId));
 
-      match /prescriptions/{prescriptionId} {
-        allow read: if isActiveCareTeamMember(patientId) || isLinkedPatient(patientId);
-        allow create: if isActiveClinicianOnTeam(patientId) &&
-                      request.resource.data.authorId == request.auth.uid;
-        allow update: if isActiveClinicianOnTeam(patientId) &&
-                         request.resource.data.authorId == resource.data.authorId;
-        allow delete: if false;
-      }
-    }
+        // care_teams create:
+        // - Admin of this org OR active clinician on this patient's team in this org
+        // - ID == patientId + '_' + userId
+        // - status == 'active'
+        // - role in ['clinician', 'nurse']
+        // - patient exists in this organization
+        // - userId exists in users/, belongs to this org (orgId), and has matching role and displayName
+        allow create: if (isOrgAdmin(orgId) || isActiveClinicianOnTeam(orgId, request.resource.data.patientId)) &&
+          teamMemberId == request.resource.data.patientId + '_' + request.resource.data.userId &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.role in ['clinician', 'nurse'] &&
+          request.resource.data.keys().hasOnly(['patientId', 'userId', 'displayName', 'role', 'status', 'createdAt']) &&
+          exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(request.resource.data.patientId)) &&
+          exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) &&
+          get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.orgId == orgId &&
+          get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == request.resource.data.role &&
+          get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.displayName == request.resource.data.displayName;
 
-    match /care_teams/{teamMemberId} {
-      // Members can always see their own entries (their patient list). Active
-      // team members and the linked patient can see the whole team.
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin() ||
-        isActiveCareTeamMember(resource.data.patientId) ||
-        isLinkedPatient(resource.data.patientId));
-
-      // The document ID is what grants access, so it must equal
-      // {patientId}_{userId}. Role must match the user's real role.
-      allow create: if (isAdmin() || isActiveClinicianOnTeam(request.resource.data.patientId)) &&
-        teamMemberId == request.resource.data.patientId + '_' + request.resource.data.userId &&
-        request.resource.data.status == 'active' &&
-        request.resource.data.role in ['clinician', 'nurse'] &&
-        exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) &&
-        get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == request.resource.data.role;
-
-      // Removal only, keeping history. Admin or an active clinician on the team;
-      // nurses cannot remove anyone. patientId and userId never change.
-      allow update: if request.resource.data.patientId == resource.data.patientId &&
-        request.resource.data.userId == resource.data.userId &&
-        (isAdmin() ||
-         (isActiveClinicianOnTeam(resource.data.patientId) &&
+        // care_teams update:
+        // - No changes to patientId, userId, role, or displayName
+        // - Only status and removedAt may change
+        // - Active clinician on team can only set status to 'removed'
+        // - Org admin can set 'active' or 'removed'
+        allow update: if request.resource.data.patientId == resource.data.patientId &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.displayName == resource.data.displayName &&
           onlyChanges(['status', 'removedAt']) &&
-          request.resource.data.status == 'removed'));
+          ((isOrgAdmin(orgId) && request.resource.data.status in ['active', 'removed']) ||
+           (isActiveClinicianOnTeam(orgId, resource.data.patientId) && request.resource.data.status == 'removed'));
+
+        allow delete: if false;
+      }
+    }
+
+    // 4. Collection-group query for patients
+    // A signed-in user may list patients documents where linkedUserId == their own uid
+    match /{path=**}/patients/{patientId} {
+      allow list: if isAuthenticated() && !isPlatformOwner() && resource.data.linkedUserId == request.auth.uid;
+    }
+
+    // 5. Root Users collection
+    match /users/{userId} {
+      // get: self, or staff of the same organization. Patient accounts are readable only by that patient.
+      // Platform owner cannot read any user.
+      allow get: if isAuthenticated() && !isPlatformOwner() && (
+        request.auth.uid == userId ||
+        (resource.data.role != 'patient' &&
+         resource.data.orgId is string &&
+         isOrgStaff(resource.data.orgId)));
+
+      // list: staff may list users of their own organization only, using a query filtered on orgId.
+      // Patient accounts are never listable.
+      allow list: if isAuthenticated() && !isPlatformOwner() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role in ['clinician', 'nurse', 'admin'] &&
+        getUserData().orgId is string &&
+        resource.data.orgId == getUserData().orgId;
+
+      // create:
+      // 1. Platform owner creating an organization's first admin:
+      //    - uid == organizations/{orgId}.firstAdminUid
+      //    - document does not exist yet (!exists)
+      //    - uid != request.auth.uid
+      //    - role == 'admin'
+      //    - Whitelist keys: ['displayName', 'email', 'phone', 'role', 'orgId']
+      // 2. Admin of an org creating staff in their own org (orgId == admin's orgId, role in ['clinician', 'nurse', 'admin'])
+      // 3. Admin of any org creating a patient account (role == 'patient', no orgId)
+      allow create: if
+        (isPlatformOwner() &&
+         request.resource.data.keys().hasOnly(['displayName', 'email', 'phone', 'role', 'orgId']) &&
+         request.resource.data.role == 'admin' &&
+         request.resource.data.orgId is string &&
+         userId != request.auth.uid &&
+         !exists(/databases/$(database)/documents/users/$(userId)) &&
+         exists(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)) &&
+         get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.firstAdminUid == userId) ||
+        (request.resource.data.keys().hasOnly(['displayName', 'email', 'phone', 'role', 'orgId']) &&
+         request.resource.data.orgId is string &&
+         isOrgAdmin(request.resource.data.orgId) &&
+         request.resource.data.role in ['clinician', 'nurse', 'admin']) ||
+        (request.resource.data.keys().hasOnly(['displayName', 'email', 'phone', 'role']) &&
+         isAnyAdmin() &&
+         request.resource.data.role == 'patient');
+
+      // update:
+      // - orgId can never change (if present, must match existing)
+      // - Self may change only displayName and phone
+      // - Org admin may change role of staff in their own organization (clinician, nurse, admin only)
+      // - Org admin cannot edit patient accounts
+      // - Org admin cannot change their own role (userId != request.auth.uid)
+      allow update: if
+        // orgId immutability check
+        ((!('orgId' in resource.data) && !('orgId' in request.resource.data)) ||
+         (resource.data.orgId == request.resource.data.orgId)) &&
+        ((isAuthenticated() && request.auth.uid == userId && onlyChanges(['displayName', 'phone'])) ||
+         (resource.data.role in ['clinician', 'nurse', 'admin'] &&
+          resource.data.orgId is string &&
+          isOrgAdmin(resource.data.orgId) &&
+          userId != request.auth.uid &&
+          onlyChanges(['role']) &&
+          request.resource.data.role in ['clinician', 'nurse', 'admin']));
 
       allow delete: if false;
     }

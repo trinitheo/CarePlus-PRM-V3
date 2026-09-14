@@ -19,6 +19,11 @@ The Firestore emulator requires **Java (JDK 21 or above)**.
   brew install openjdk@21
   ```
 
+- **Windows**:
+  ```powershell
+  winget install EclipseAdoptium.Temurin.21.JDK
+  ```
+
 - **Verify installation**:
   ```bash
   java -version
