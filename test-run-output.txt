@@ -1,0 +1,282 @@
+i  emulators: Starting emulators: firestore
+i  emulators: Detected demo project ID "demo-no-project", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator was started in standard edition.
+✔  firestore: Firestore Emulator UI websocket is running on 9150.
+i  Running script: npx tsx --test --test-reporter=spec test/firestore.rules.test.ts
+▶ CarePlus v2 Firestore Security Rules
+  ▶ ALLOWED cases
+    ✔ ALLOW: admin can get and list patients (1221.877422ms)
+    ✔ ALLOW: admin can create a patient with required identity fields only (475.675623ms)
+    ✔ ALLOW: active care team clinician can read their patient document (321.423872ms)
+    ✔ ALLOW: active care team nurse can read their patient document (268.118818ms)
+    ✔ ALLOW: linked patient can read their own patient document (219.892835ms)
+    ✔ ALLOW: linked patient can update only phone and email on patient document (270.002888ms)
+    ✔ ALLOW: active care team member can update patient document (209.32162ms)
+    ✔ ALLOW: admin, active team members, and linked patient can read care_teams (287.269658ms)
+    ✔ ALLOW: active team member can read clinical notes, vitals, prescriptions (233.677633ms)
+    ✔ ALLOW: linked patient can read their own chart (notes, vitals, prescriptions) (203.627723ms)
+    ✔ ALLOW: active team clinician can create notes with self as author (192.018978ms)
+    ✔ ALLOW: note author still on active team can update their note (144.391464ms)
+    ✔ ALLOW: patient can add vitals with source=patient and self as author (138.462921ms)
+    ✔ ALLOW: active clinician on team can create prescription with self as author (186.633809ms)
+    ✔ ALLOW: active clinician on team can update prescription authoring (193.475635ms)
+    ✔ ALLOW: user can update own displayName and phone on users/{uid} (123.629611ms)
+  ✔ ALLOWED cases (4691.428793ms)
+  ▶ DENIED cases
+    ✔ DENY: clinician not on care team reading patient document (189.75111ms)
+    ✔ DENY: removed care team member reading patient document or chart (187.507504ms)
+[2026-10-10T12:26:24.356Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa39d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L129:28 for 'update' @ L129, false for 'update' @ L129
+    ✔ DENY: removed care team member updating a note they authored (153.840195ms)
+[2026-10-10T12:26:24.556Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa39f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L154:28 for 'create' @ L154, evaluation error at L156:28 for 'update' @ L156, false for 'create' @ L154
+    ✔ DENY: nurse writing a prescription (199.342032ms)
+[2026-10-10T12:26:24.761Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3a1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: nurse creating care_teams entry (204.400762ms)
+[2026-10-10T12:26:24.947Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3a3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: clinician on patient A creating care_teams entry for patient B (186.338858ms)
+    ✔ DENY: patient reading another patient document (162.943101ms)
+    ✔ DENY: unassigned staff listing or getting patients (199.264065ms)
+[2026-10-10T12:26:25.459Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3a9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+[2026-10-10T12:26:25.515Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3aa error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+[2026-10-10T12:26:25.525Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3ab error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: non-admin changing patient identity fields (firstName, mrn, linkedUserId) (214.990465ms)
+[2026-10-10T12:26:25.671Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3ad error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L127, evaluation error at L129:28 for 'update' @ L129, false for 'create' @ L127
+    ✔ DENY: forging authorId on note creation (146.511164ms)
+[2026-10-10T12:26:25.833Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3af error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L156:28 for 'update' @ L156, false for 'update' @ L156
+    ✔ DENY: changing authorId on prescription update (161.696296ms)
+[2026-10-10T12:26:26.013Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3b1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+    ✔ DENY: user changing role or unauthorized fields on users/{uid} (179.748285ms)
+[2026-10-10T12:26:26.129Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3b3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L203
+[2026-10-10T12:26:26.148Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3b4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L132
+[2026-10-10T12:26:26.153Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3b5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L123
+    ✔ DENY: deleting records in care_teams or clinical records (140.198057ms)
+  ✔ DENIED cases (2327.438345ms)
+  ▶ Probes2 Review Scenarios
+    ✔ ALLOW: C1 clinician on the team reads a note (150.866738ms)
+    ✔ DENY: C2 nurse on A reads patient B (115.499084ms)
+[2026-10-10T12:26:26.603Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3bb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: P1 nurse sets patient_A.linkedUserId to her own account (182.77042ms)
+[2026-10-10T12:26:26.753Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3bd error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: P2 nurse links herself, is removed from the team, still reads the chart (216.166197ms)
+[2026-10-10T12:26:26.943Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3c1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L195:26 for 'update' @ L195, false for 'update' @ L195
+    ✔ DENY: P3 nurse removes the clinician from the team (123.588222ms)
+    ✔ ALLOW: P4 patient reads the name of their own clinician from care_teams entry (173.826762ms)
+    ✔ DENY: P5 nurse reads the user record of a patient who is not hers (138.264132ms)
+    ✔ ALLOW: P6 clinician lists their own care-team assignments (171.931408ms)
+[2026-10-10T12:26:27.537Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3c9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L145:28 for 'update' @ L145, false for 'update' @ L145
+    ✔ DENY: P7 clinician relabels their clinic vital as patient-entered (110.335441ms)
+    ✔ ALLOW: P8 active clinician adds a nurse to their own patient team (109.854009ms)
+    ✔ ALLOW: S1 patient lists their own care team (119.698624ms)
+    ✔ ALLOW: S2 active clinician removes a nurse from the team (170.276189ms)
+    ✔ ALLOW: S3 care-team member updates the patient phone number (176.375986ms)
+[2026-10-10T12:26:28.240Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3d3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: S4 clinician on A forges a team entry to reach patient B (126.892969ms)
+[2026-10-10T12:26:28.405Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3d5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: S5 clinician adds a nurse under the wrong role (164.914938ms)
+[2026-10-10T12:26:28.515Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3d7 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: S6 nurse adds someone to the team (109.453206ms)
+    ✔ DENY: S7 patient reads another patient user record (116.330855ms)
+[2026-10-10T12:26:28.732Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3db error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: S8 clinician changes the patient MRN (100.83803ms)
+  ✔ Probes2 Review Scenarios (2579.038781ms)
+  ▶ Task 1b: Organizations and Multi-tenancy Scenarios
+    ✔ DENY: Clinic B admin cannot get or list Clinic A patients, staff or care teams (150.165248ms)
+[2026-10-10T12:26:29.016Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3df error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L87:26 for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+[2026-10-10T12:26:29.024Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3e0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+[2026-10-10T12:26:29.033Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3e1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L241:9 for 'create' @ L241, evaluation error at L265:9 for 'update' @ L265, false for 'create' @ L241
+    ✔ DENY: Clinic B admin cannot create a patient, care-team entry or user in Clinic A (149.936822ms)
+[2026-10-10T12:26:29.164Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3e3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+[2026-10-10T12:26:29.171Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3e4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+    ✔ DENY: Clinic B admin cannot change a Clinic A user role or orgId (137.878387ms)
+[2026-10-10T12:26:29.278Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3e6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+[2026-10-10T12:26:29.312Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3e7 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+    ✔ DENY: No one can change any user orgId (141.537394ms)
+    ✔ DENY: A Clinic A clinician given a forged active care_teams entry in Clinic B still cannot read Clinic B chart (109.59875ms)
+    ✔ ALLOW/DENY: A patient linked to records at both Clinic A and Clinic B can read both of their own charts, and no other patient chart at either (110.342572ms)
+[2026-10-10T12:26:29.706Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3f0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L127:28 for 'create' @ L127, evaluation error at L129:28 for 'update' @ L129, false for 'create' @ L127
+[2026-10-10T12:26:29.714Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3f1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L154:28 for 'create' @ L154, evaluation error at L156:28 for 'update' @ L156, false for 'create' @ L154
+    ✔ dr_chen_work cannot read any Clinic B chart; dr_chen_personal can read only their own Clinic B chart and cannot write notes or prescriptions (182.029338ms)
+    ✔ Platform owner can create an organization and its first admin, and cannot read any patient, chart, care team or user (150.083542ms)
+[2026-10-10T12:26:29.967Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3f6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L68, false for 'update' @ L76
+    ✔ DENY: A user without the platformOwner claim cannot create an organization (102.085115ms)
+[2026-10-10T12:26:30.083Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3f8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L241, evaluation error at L265:9 for 'update' @ L265, false for 'create' @ L241
+    ✔ DENY: Creating a user document with an unexpected field is rejected (116.765615ms)
+[2026-10-10T12:26:30.182Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3fa error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: an org admin cannot add themselves or any admin to a care team, and has no chart access even with a forged care-team entry (141.161675ms)
+[2026-10-10T12:26:30.335Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3fe error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+[2026-10-10T12:26:30.344Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa3ff error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: a care-team entry whose displayName or role does not match the member account is rejected (119.357108ms)
+[2026-10-10T12:26:30.435Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa401 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L179:26 for 'create' @ L179, evaluation error at L195:26 for 'update' @ L195, false for 'create' @ L179
+    ✔ DENY: a Clinic A clinician cannot add a Clinic B staff member to a Clinic A team (91.114343ms)
+[2026-10-10T12:26:30.518Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa403 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L195:26 for 'update' @ L195, false for 'update' @ L195
+[2026-10-10T12:26:30.536Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa404 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L195:26 for 'update' @ L195, false for 'update' @ L195
+    ✔ DENY: a nurse cannot remove anyone; a clinician can only set status removed (107.20647ms)
+[2026-10-10T12:26:30.650Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa407 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L241:9 for 'create' @ L241, evaluation error at L265:9 for 'update' @ L265, false for 'create' @ L241
+[2026-10-10T12:26:30.658Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa408 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L241:9 for 'create' @ L241, evaluation error at L265:9 for 'update' @ L265, false for 'create' @ L241
+    ✔ DENY: platform owner cannot create a second admin or make themselves admin (115.768705ms)
+[2026-10-10T12:26:30.761Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa40a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+    ✔ DENY: an admin cannot change their own role (102.199758ms)
+    ✔ ALLOW/DENY: Clinic A staff can list Clinic A staff but not Clinic B staff, and nobody can list patient accounts (294.071672ms)
+    ✔ ALLOW: a patient collection-group query returns their Clinic A and Clinic B records and no one else (105.218656ms)
+  ✔ Task 1b: Organizations and Multi-tenancy Scenarios (2427.667663ms)
+  ▶ Task 1c: Escalation Closure, Patient ID Binding & MRN Lifecycle
+    ✔ ALLOW: admin creates a patient with no linkedUserId (145.153144ms)
+    ✔ ALLOW: admin updates demographics (name, phone, mrn) (117.533859ms)
+    ✔ ALLOW: admin unlinks a patient by removing linkedUserId (127.340364ms)
+[2026-10-10T12:26:31.662Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa417 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+[2026-10-10T12:26:31.670Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa418 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+[2026-10-10T12:26:31.678Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa419 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+[2026-10-10T12:26:31.707Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa41a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+[2026-10-10T12:26:31.714Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa41b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+[2026-10-10T12:26:31.720Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa41c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, false for 'update' @ L109
+[2026-10-10T12:26:31.726Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa41d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, false for 'update' @ L109
+[2026-10-10T12:26:31.732Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa41e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, false for 'update' @ L109
+    ✔ DENY: admin creating patient missing required fields (mrn, firstName, lastName, dob) (181.55671ms)
+[2026-10-10T12:26:31.845Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa420 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+[2026-10-10T12:26:31.856Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa421 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+[2026-10-10T12:26:31.862Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa422 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+[2026-10-10T12:26:31.874Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa423 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: admin updating patient with empty-string mrn or names, or removing mrn (142.176967ms)
+    ✔ DENY: collection-group patients list without the linkedUserId filter (92.3776ms)
+    ✔ DENY: staff listing /users without the orgId filter (103.365233ms)
+    ✔ DENY: patient listing /users (135.714127ms)
+    ✔ ALLOW: admin can update patient linkedUserId to an existing patient account (109.430209ms)
+[2026-10-10T12:26:32.400Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa42d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, false for 'update' @ L109
+    ✔ DENY: admin creating patient where data.id != patientId (path mismatch) (85.92503ms)
+[2026-10-10T12:26:32.478Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa42f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: admin updating patient to change id to mismatch patientId (76.734965ms)
+[2026-10-10T12:26:32.609Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa431 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: admin setting patient linkedUserId to their own uid on update (130.610478ms)
+[2026-10-10T12:26:32.714Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa433 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L87, evaluation error at L109:11 for 'update' @ L109, false for 'create' @ L87
+    ✔ DENY: admin setting patient linkedUserId to their own uid on create (105.250236ms)
+[2026-10-10T12:26:32.796Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa435 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+[2026-10-10T12:26:32.804Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa436 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: admin setting patient linkedUserId to a clinician or nurse uid (89.567139ms)
+[2026-10-10T12:26:32.893Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa438 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:11 for 'update' @ L109, false for 'update' @ L109
+    ✔ DENY: admin setting patient linkedUserId to a non-existent user UID (89.307837ms)
+    ✔ DENY: platform owner cannot read notes (89.365082ms)
+[2026-10-10T12:26:33.088Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa43c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L127, false for 'update' @ L129
+[2026-10-10T12:26:33.101Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa43d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'update' @ L129
+    ✔ DENY: platform owner cannot create or update notes (118.79585ms)
+    ✔ DENY: platform owner cannot read vitals (144.306353ms)
+[2026-10-10T12:26:33.371Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa441 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L137, false for 'update' @ L145
+[2026-10-10T12:26:33.383Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa442 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'update' @ L145
+    ✔ DENY: platform owner cannot create or update vitals (154.986916ms)
+    ✔ DENY: platform owner cannot read prescriptions (70.573927ms)
+[2026-10-10T12:26:33.567Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa446 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L154, false for 'update' @ L156
+[2026-10-10T12:26:33.572Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa447 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'update' @ L156
+    ✔ DENY: platform owner cannot create or update prescriptions (100.433613ms)
+[2026-10-10T12:26:33.672Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa449 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+[2026-10-10T12:26:33.705Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa44a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L265:9 for 'update' @ L265, false for 'update' @ L265
+    ✔ DENY: removing or adding orgId on a user document is denied by explicit condition (132.774069ms)
+  ✔ Task 1c: Escalation Closure, Patient ID Binding & MRN Lifecycle (2544.786653ms)
+[2026-10-10T12:26:33.779Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa44c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L137, evaluation error at L145:28 for 'update' @ L145, false for 'create' @ L137
+  ▶ Device & Wearable Vitals Telemetry
+    ✔ DENY: linked patient cannot submit vitals with source=device (74.115562ms)
+[2026-10-10T12:26:33.862Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa44e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L137, evaluation error at L145:28 for 'update' @ L145, false for 'create' @ L137
+    ✔ DENY: linked patient cannot submit vitals with source=wearable (82.547169ms)
+[2026-10-10T12:26:33.942Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa450 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L137:28 for 'create' @ L137, evaluation error at L145:28 for 'update' @ L145, false for 'create' @ L137
+    ✔ DENY: patient cannot submit vitals with source=clinic (80.324821ms)
+[2026-10-10T12:26:34.053Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa453 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L145:28 for 'update' @ L145, false for 'update' @ L145
+    ✔ DENY: linked patient updates a vital they entered themselves (source: patient) (111.319803ms)
+[2026-10-10T12:26:34.157Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x202fa455 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L137:28 for 'create' @ L137, evaluation error at L145:28 for 'update' @ L145, false for 'create' @ L137
+    ✔ DENY: linked patient creates a source: patient vital in another patient’s chart (103.379909ms)
+  ✔ Device & Wearable Vitals Telemetry (452.058427ms)
+  ▶ Task 2: Canonical Seed Validation & Clinician/Nurse Panel Queries
+    ✔ ALLOW: admin can create all canonical seed users through real rules (129.908061ms)
+    ✔ ALLOW: admin can create all canonical seed patients through real rules (125.31469ms)
+    ✔ ALLOW: admin can create all canonical seed active care-team entries through real rules (233.129341ms)
+    ✔ ALLOW: admin creates and removes nurse_amy on patient_C care-team (status: removed) (129.128789ms)
+    ✔ ALLOW: dr_smith runs real getStaffPatients() and sees exactly their active assigned patients (158.616125ms)
+    ✔ ALLOW: dr_jones runs real getStaffPatients() and sees exactly their 2 active assigned patients (147.477105ms)
+    ✔ ALLOW: nurse_amy runs real getStaffPatients() and sees only active patients (patient_C excluded entirely) (142.550159ms)
+    ✔ ALLOW: dr_unassigned runs real getStaffPatients() and gets an empty array (0 patients) (88.199784ms)
+    ✔ DENY: dr_unassigned attempting direct get on any patient chart is denied (109.119366ms)
+  ✔ Task 2: Canonical Seed Validation & Clinician/Nurse Panel Queries (1264.090802ms)
+✔ CarePlus v2 Firestore Security Rules (18173.5887ms)
+ℹ tests 101
+ℹ suites 8
+ℹ pass 101
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18938.651798
+✔  Script exited successfully (code 0)
+i  emulators: Shutting down emulators.
+i  firestore: Stopping Firestore Emulator
+i  hub: Stopping emulator hub
+i  logging: Stopping Logging Emulator

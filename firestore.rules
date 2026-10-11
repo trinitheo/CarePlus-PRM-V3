@@ -87,35 +87,62 @@ service cloud.firestore {
         allow create: if isOrgAdmin(orgId) &&
           request.resource.data.keys().hasOnly([
             'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'linkedUserId', 'createdAt'
-          ]);
+          ]) &&
+          request.resource.data.id == patientId &&
+          ('mrn' in request.resource.data) && request.resource.data.mrn is string && request.resource.data.mrn.size() > 0 &&
+          ('firstName' in request.resource.data) && request.resource.data.firstName is string && request.resource.data.firstName.size() > 0 &&
+          ('lastName' in request.resource.data) && request.resource.data.lastName is string && request.resource.data.lastName.size() > 0 &&
+          ('dob' in request.resource.data) && request.resource.data.dob is string &&
+          (!('linkedUserId' in request.resource.data) ||
+           (request.resource.data.linkedUserId != request.auth.uid &&
+            exists(/databases/$(database)/documents/users/$(request.resource.data.linkedUserId)) &&
+            get(/databases/$(database)/documents/users/$(request.resource.data.linkedUserId)).data.role == 'patient'));
 
         // Identity fields (mrn, name, dob, linkedUserId) change only through admin.
-        allow update: if isOrgAdmin(orgId) ||
-          ((isActiveCareTeamMember(orgId, patientId) ||
-            (isAuthenticated() && resource.data.linkedUserId == request.auth.uid)) &&
-           onlyChanges(['phone', 'email']));
+        // Admin update must:
+        // - never set linkedUserId to request.auth.uid
+        // - if linkedUserId is set/changed, target user must exist and have role == 'patient'
+        // - document id cannot be changed to diverge from patientId
+        // - mrn, firstName, lastName must be non-empty strings if provided
+        // - mrn cannot be removed if already set
+        allow update: if
+          (!('id' in request.resource.data) || request.resource.data.id == patientId) &&
+          (!('mrn' in request.resource.data) || (request.resource.data.mrn is string && request.resource.data.mrn.size() > 0)) &&
+          (!('firstName' in request.resource.data) || (request.resource.data.firstName is string && request.resource.data.firstName.size() > 0)) &&
+          (!('lastName' in request.resource.data) || (request.resource.data.lastName is string && request.resource.data.lastName.size() > 0)) &&
+          (!('mrn' in resource.data) || ('mrn' in request.resource.data)) &&
+          ((isOrgAdmin(orgId) &&
+            (!('linkedUserId' in request.resource.data) ||
+             (request.resource.data.linkedUserId != request.auth.uid &&
+              exists(/databases/$(database)/documents/users/$(request.resource.data.linkedUserId)) &&
+              get(/databases/$(database)/documents/users/$(request.resource.data.linkedUserId)).data.role == 'patient'))) ||
+           ((isActiveCareTeamMember(orgId, patientId) ||
+             (isAuthenticated() && resource.data.linkedUserId == request.auth.uid)) &&
+            onlyChanges(['phone', 'email'])));
 
         allow delete: if false;
 
         match /notes/{noteId} {
-          allow read: if isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId);
-          allow create: if isActiveCareTeamMember(orgId, patientId) &&
+          allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
+          allow create: if !isPlatformOwner() && isActiveCareTeamMember(orgId, patientId) &&
                         request.resource.data.authorId == request.auth.uid;
-          allow update: if resource.data.authorId == request.auth.uid &&
+          allow update: if !isPlatformOwner() && resource.data.authorId == request.auth.uid &&
                            isActiveCareTeamMember(orgId, patientId) &&
                            request.resource.data.authorId == resource.data.authorId;
           allow delete: if false;
         }
 
         match /vitals/{vitalId} {
-          allow read: if isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId);
-          allow create: if (isLinkedPatient(orgId, patientId) &&
-                            request.resource.data.source == 'patient' &&
-                            request.resource.data.authorId == request.auth.uid) ||
-                           (isActiveCareTeamMember(orgId, patientId) &&
-                            request.resource.data.source == 'clinic' &&
-                            request.resource.data.authorId == request.auth.uid);
-          allow update: if resource.data.authorId == request.auth.uid &&
+          allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
+          allow create: if !isPlatformOwner() && (
+                            (isLinkedPatient(orgId, patientId) &&
+                             request.resource.data.source == 'patient' &&
+                             request.resource.data.authorId == request.auth.uid) ||
+                            (isActiveCareTeamMember(orgId, patientId) &&
+                             request.resource.data.source == 'clinic' &&
+                             request.resource.data.authorId == request.auth.uid)
+                           );
+          allow update: if !isPlatformOwner() && resource.data.authorId == request.auth.uid &&
                            isActiveCareTeamMember(orgId, patientId) &&
                            request.resource.data.authorId == resource.data.authorId &&
                            request.resource.data.source == resource.data.source;
@@ -123,10 +150,10 @@ service cloud.firestore {
         }
 
         match /prescriptions/{prescriptionId} {
-          allow read: if isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId);
-          allow create: if isActiveClinicianOnTeam(orgId, patientId) &&
+          allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
+          allow create: if !isPlatformOwner() && isActiveClinicianOnTeam(orgId, patientId) &&
                         request.resource.data.authorId == request.auth.uid;
-          allow update: if isActiveClinicianOnTeam(orgId, patientId) &&
+          allow update: if !isPlatformOwner() && isActiveClinicianOnTeam(orgId, patientId) &&
                            request.resource.data.authorId == resource.data.authorId;
           allow delete: if false;
         }
@@ -234,9 +261,9 @@ service cloud.firestore {
       // - Org admin cannot edit patient accounts
       // - Org admin cannot change their own role (userId != request.auth.uid)
       allow update: if
-        // orgId immutability check
-        ((!('orgId' in resource.data) && !('orgId' in request.resource.data)) ||
-         (resource.data.orgId == request.resource.data.orgId)) &&
+        // orgId immutability check: explicit condition to avoid evaluation error when adding or removing orgId
+        (('orgId' in resource.data) == ('orgId' in request.resource.data)) &&
+        (!('orgId' in resource.data) || resource.data.orgId == request.resource.data.orgId) &&
         ((isAuthenticated() && request.auth.uid == userId && onlyChanges(['displayName', 'phone'])) ||
          (resource.data.role in ['clinician', 'nurse', 'admin'] &&
           resource.data.orgId is string &&

@@ -18,16 +18,35 @@ clinician, nurse, patient, admin. No other roles until I ask for them.
   organizations has two accounts.
 - Patients sign in with their own email. One patient login may be linked to
   patient records at several organizations through linkedUserId.
+- A staff member who becomes a patient registers a separate account with a
+  different email. patients.linkedUserId may only ever point to a /users doc
+  with role == 'patient'. There is no flow that converts a staff account into
+  a patient account, or links a patient record to a staff UID.
 - The platform owner is identified only by a custom auth claim
   (request.auth.token.platformOwner == true), set server-side. It is never a
   field any client can write.
 - Access to any patient data comes from active membership in that patient's
   care team (or being that patient). Never from role alone.
 - Admin manages accounts and roles. Admin does not get chart access.
-- No anonymous sign-in. Real accounts only.
+- No anonymous sign-in in production. Real accounts only.
+- A staff member who becomes a patient registers a separate account with a
+  different email. patients.linkedUserId may only point to a /users doc with
+  role == 'patient'.
+- One person, one MRN. No MRN is created until a person becomes a patient.
+  Before any patient file is created, existing patients are searched by name
+  and date of birth, and a match is reused.
+- Only admin creates patient files.
+- No component imports from firebase/firestore or firebase/auth. All data
+  access goes through src/services/.
+- In development the app runs in mock mode by default: in-memory demo data
+  and a dev-only “Sign in as” switcher. Neither may exist in a production
+  build.
+- Mock mode is for exercising features only. Security is proven only by the
+  emulator rules tests. Never write tests against mock data.
 - No API keys in client code. AI features call a server, never the model
   directly from the browser.
 - Every security rule has tests, including tests that prove access is DENIED.
+- Command and test output is pasted verbatim, never retyped or summarised.
 - Colors come from design tokens, never raw hex. Components stay under ~300
   lines.
 

@@ -1,1 +1,50 @@
 @import "tailwindcss";
+
+@theme {
+  --color-surface-canvas: #f8fafc;
+  --color-surface-card: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-surface-hover: #f8fafc;
+
+  --color-text-title: #0f172a;
+  --color-text-body: #334155;
+  --color-text-muted: #64748b;
+  --color-text-inverted: #ffffff;
+
+  --color-border-subtle: #f1f5f9;
+  --color-border-default: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  --color-primary-subtle: #f0fdfa;
+  --color-primary-base: #0f766e;
+  --color-primary-hover: #115e59;
+  --color-primary-text: #134e4a;
+
+  --color-role-clinician-bg: #e0f2fe;
+  --color-role-clinician-text: #0369a1;
+  --color-role-clinician-border: #bae6fd;
+
+  --color-role-nurse-bg: #dcfce7;
+  --color-role-nurse-text: #15803d;
+  --color-role-nurse-border: #bbf7d0;
+
+  --color-role-patient-bg: #ede9fe;
+  --color-role-patient-text: #6d28d9;
+  --color-role-patient-border: #ddd6fe;
+
+  --color-role-admin-bg: #fef3c7;
+  --color-role-admin-text: #b45309;
+  --color-role-admin-border: #fde68a;
+
+  --color-status-active-bg: #ecfdf5;
+  --color-status-active-text: #047857;
+  --color-status-active-border: #a7f3d0;
+
+  --color-status-removed-bg: #f1f5f9;
+  --color-status-removed-text: #475569;
+  --color-status-removed-border: #cbd5e1;
+
+  --color-status-danger-bg: #fef2f2;
+  --color-status-danger-text: #b91c1c;
+  --color-status-danger-border: #fecaca;
+}

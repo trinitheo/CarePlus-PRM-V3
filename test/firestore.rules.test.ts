@@ -13,12 +13,15 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   collection,
   collectionGroup,
   getDocs,
   query,
   where
 } from 'firebase/firestore';
+import { CANONICAL_SEED } from '../src/services/seed';
+import { getStaffPatients } from '../src/services/firestore';
 
 const PROJECT_ID = 'careplus-v2-test';
 
@@ -75,6 +78,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         // Patient accounts: no orgId
         await setDoc(doc(db, 'users/patient_user_a'), { role: 'patient', displayName: 'Alice Patient', phone: '777-777-7777' });
         await setDoc(doc(db, 'users/patient_user_b'), { role: 'patient', displayName: 'Bob Patient', phone: '888-888-8888' });
+        await setDoc(doc(db, 'users/user_new'), { role: 'patient', displayName: 'New User Patient', phone: '123-456-7890' });
 
         // Clinic B users
         await setDoc(doc(db, 'users/admin_b'), { role: 'admin', orgId: 'clinic_b', displayName: 'Admin B', phone: '111-222-0000' });
@@ -937,6 +941,562 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       assert.strictEqual(snapshot.docs.length, 2);
       const patientIds = snapshot.docs.map(d => d.id).sort();
       assert.deepStrictEqual(patientIds, ['patient_dual_a', 'patient_dual_b']);
+    });
+  });
+
+  // =========================================================================
+  // TASK 1C: ESCALATION CLOSURE, PATIENT ID BINDING & MRN LIFECYCLE
+  // =========================================================================
+  describe('Task 1c: Escalation Closure, Patient ID Binding & MRN Lifecycle', () => {
+    it('ALLOW: admin creates a patient with no linkedUserId', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertSucceeds(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_no_link'), {
+        id: 'patient_no_link',
+        mrn: 'MRN-NOLINK-01',
+        firstName: 'No',
+        lastName: 'Link',
+        dob: '1990-01-01',
+        gender: 'female',
+        email: 'nolink@example.com',
+        phone: '555-444-3333',
+        createdAt: '2026-03-05T00:00:00Z'
+      }));
+    });
+
+    it('ALLOW: admin updates demographics (name, phone, mrn)', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertSucceeds(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        firstName: 'AliceUpdated',
+        phone: '555-987-6543',
+        mrn: 'MRN-001-REV'
+      }));
+    });
+
+    it('ALLOW: admin unlinks a patient by removing linkedUserId', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertSucceeds(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        linkedUserId: deleteField()
+      }));
+    });
+
+    it('DENY: admin creating patient missing required fields (mrn, firstName, lastName, dob)', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      // Empty document
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty'), {}));
+      // Missing mrn
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_mrn'), {
+        id: 'patient_missing_mrn',
+        firstName: 'Pending',
+        lastName: 'Onboarding',
+        dob: '1995-04-12'
+      }));
+      // Missing firstName
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_first'), {
+        id: 'patient_missing_first',
+        mrn: 'MRN-101',
+        lastName: 'Onboarding',
+        dob: '1995-04-12'
+      }));
+      // Missing lastName
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_last'), {
+        id: 'patient_missing_last',
+        mrn: 'MRN-102',
+        firstName: 'Pending',
+        dob: '1995-04-12'
+      }));
+      // Missing dob
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_dob'), {
+        id: 'patient_missing_dob',
+        mrn: 'MRN-103',
+        firstName: 'Pending',
+        lastName: 'Onboarding'
+      }));
+      // Empty string mrn
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_mrn'), {
+        id: 'patient_empty_mrn',
+        mrn: '',
+        firstName: 'Pending',
+        lastName: 'Onboarding',
+        dob: '1995-04-12'
+      }));
+      // Empty string firstName
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_first'), {
+        id: 'patient_empty_first',
+        mrn: 'MRN-104',
+        firstName: '',
+        lastName: 'Onboarding',
+        dob: '1995-04-12'
+      }));
+      // Empty string lastName
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_last'), {
+        id: 'patient_empty_last',
+        mrn: 'MRN-105',
+        firstName: 'Pending',
+        lastName: '',
+        dob: '1995-04-12'
+      }));
+    });
+
+    it('DENY: admin updating patient with empty-string mrn or names, or removing mrn', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      // Empty string mrn on update
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        mrn: ''
+      }));
+      // Empty string firstName on update
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        firstName: ''
+      }));
+      // Empty string lastName on update
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        lastName: ''
+      }));
+      // Removing mrn on update
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        mrn: deleteField()
+      }));
+    });
+
+    it('DENY: collection-group patients list without the linkedUserId filter', async () => {
+      const db = testEnv.authenticatedContext('dual_patient_user').firestore();
+      await assertFails(getDocs(collectionGroup(db, 'patients')));
+    });
+
+    it('DENY: staff listing /users without the orgId filter', async () => {
+      const staffDb = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(getDocs(collection(staffDb, 'users')));
+    });
+
+    it('DENY: patient listing /users', async () => {
+      const patientDb = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertFails(getDocs(collection(patientDb, 'users')));
+    });
+
+    it('ALLOW: admin can update patient linkedUserId to an existing patient account', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertSucceeds(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        linkedUserId: 'patient_user_b'
+      }));
+    });
+
+    it('DENY: admin creating patient where data.id != patientId (path mismatch)', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_path_id'), {
+        id: 'different_id_field',
+        firstName: 'Mismatch',
+        lastName: 'Patient',
+        createdAt: '2026-03-05T00:00:00Z'
+      }));
+    });
+
+    it('DENY: admin updating patient to change id to mismatch patientId', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        id: 'tampered_patient_id'
+      }));
+    });
+
+    it('DENY: admin setting patient linkedUserId to their own uid on update', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        linkedUserId: 'admin_1'
+      }));
+    });
+
+    it('DENY: admin setting patient linkedUserId to their own uid on create', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_escalate_attempt'), {
+        id: 'patient_escalate_attempt',
+        firstName: 'Escalation',
+        lastName: 'Attempt',
+        linkedUserId: 'admin_1',
+        createdAt: '2026-03-05T00:00:00Z'
+      }));
+    });
+
+    it('DENY: admin setting patient linkedUserId to a clinician or nurse uid', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      // dr_smith is role clinician
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        linkedUserId: 'dr_smith'
+      }));
+      // nurse_amy is role nurse
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        linkedUserId: 'nurse_amy'
+      }));
+    });
+
+    it('DENY: admin setting patient linkedUserId to a non-existent user UID', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        linkedUserId: 'non_existent_uid_999'
+      }));
+    });
+
+    it('DENY: platform owner cannot read notes', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
+      await assertFails(getDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_smith')));
+    });
+
+    it('DENY: platform owner cannot create or update notes', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
+      await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_owner'), {
+        authorId: 'platform_owner_uid',
+        content: 'Unauthorized owner note',
+        createdAt: '2026-03-05T00:00:00Z'
+      }));
+      await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
+        content: 'Tampered note content'
+      }));
+    });
+
+    it('DENY: platform owner cannot read vitals', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
+      await assertFails(getDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/vitals/vital_1')));
+    });
+
+    it('DENY: platform owner cannot create or update vitals', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
+      await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/vitals/vital_owner'), {
+        authorId: 'platform_owner_uid',
+        source: 'clinic',
+        systolic: 120,
+        diastolic: 80,
+        createdAt: '2026-03-05T00:00:00Z'
+      }));
+      await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/vitals/vital_1'), {
+        systolic: 130
+      }));
+    });
+
+    it('DENY: platform owner cannot read prescriptions', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
+      await assertFails(getDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1')));
+    });
+
+    it('DENY: platform owner cannot create or update prescriptions', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
+      await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_owner'), {
+        authorId: 'platform_owner_uid',
+        medication: 'Unauthorized Rx',
+        dosage: 'Daily',
+        createdAt: '2026-03-05T00:00:00Z'
+      }));
+      await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
+        dosage: 'Tampered dosage'
+      }));
+    });
+
+    it('DENY: removing or adding orgId on a user document is denied by explicit condition', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      const patientDb = testEnv.authenticatedContext('patient_user_a').firestore();
+
+      // Adding orgId to a user document that had none (patient account)
+      await assertFails(updateDoc(doc(patientDb, 'users/patient_user_a'), {
+        orgId: 'clinic_a'
+      }));
+
+      // Changing orgId on a staff user
+      await assertFails(updateDoc(doc(adminDb, 'users/dr_smith'), {
+        orgId: 'clinic_b'
+      }));
+    });
+  });
+
+  // ==========================================
+  // DEVICE & WEARABLE VITALS TELEMETRY
+  // ==========================================
+  describe('Device & Wearable Vitals Telemetry', () => {
+    it('DENY: linked patient cannot submit vitals with source=device', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_device_1'), {
+        authorId: 'patient_user_a',
+        source: 'device',
+        deviceId: 'cgm-dexcom-g7-9912',
+        deviceModel: 'Dexcom G7',
+        metric: 'glucose',
+        value: 105,
+        unit: 'mg/dL',
+        capturedAt: '2026-03-02T10:00:00Z',
+        createdAt: '2026-03-02T10:05:00Z'
+      }));
+    });
+
+    it('DENY: linked patient cannot submit vitals with source=wearable', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_wearable_1'), {
+        authorId: 'patient_user_a',
+        source: 'wearable',
+        deviceModel: 'Apple Watch Series 9',
+        metric: 'heart_rate',
+        value: 72,
+        unit: 'bpm',
+        createdAt: '2026-03-02T10:00:00Z'
+      }));
+    });
+
+    it('DENY: patient cannot submit vitals with source=clinic', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_fake_clinic'), {
+        authorId: 'patient_user_a',
+        source: 'clinic',
+        value: 120,
+        createdAt: '2026-03-02T10:00:00Z'
+      }));
+    });
+
+    it('DENY: linked patient updates a vital they entered themselves (source: patient)', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      // First ensure the vital exists (vital_patient_self exists or create via admin/seed)
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), 'organizations/clinic_a/patients/patient_A/vitals/vital_self_entered'), {
+          authorId: 'patient_user_a',
+          source: 'patient',
+          value: 120,
+          createdAt: '2026-03-02T10:00:00Z'
+        });
+      });
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_self_entered'), {
+        value: 130
+      }));
+    });
+
+    it('DENY: linked patient creates a source: patient vital in another patient’s chart', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      // patient_user_a is linked to patient_A, not patient_B
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_B/vitals/vital_cross_patient'), {
+        authorId: 'patient_user_a',
+        source: 'patient',
+        value: 110,
+        createdAt: '2026-03-02T10:00:00Z'
+      }));
+    });
+  });
+
+  describe('Task 2: Canonical Seed Validation & Clinician/Nurse Panel Queries', () => {
+    it('ALLOW: admin can create all canonical seed users through real rules', async () => {
+      const db = testEnv.authenticatedContext('admin_1').firestore();
+
+      // Seed staff users: dr_smith, dr_jones, dr_unassigned, nurse_amy
+      // Keys allowed on staff create: ['displayName', 'email', 'phone', 'role', 'orgId']
+      const staffUsers = CANONICAL_SEED.users.filter((u) => u.uid !== 'admin_1');
+      for (const user of staffUsers) {
+        await assertSucceeds(setDoc(doc(db, 'users', `new_seed_${user.uid}`), {
+          displayName: user.displayName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          orgId: 'clinic_a'
+        }));
+      }
+    });
+
+    it('ALLOW: admin can create all canonical seed patients through real rules', async () => {
+      const db = testEnv.authenticatedContext('admin_1').firestore();
+
+      for (const p of CANONICAL_SEED.patients) {
+        await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients', `new_${p.id}`), {
+          id: `new_${p.id}`,
+          mrn: `VAL-${p.mrn}`,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          dob: p.dob,
+          gender: p.gender,
+          email: p.email,
+          phone: p.phone,
+          createdAt: p.createdAt
+        }));
+      }
+    });
+
+    it('ALLOW: admin can create all canonical seed active care-team entries through real rules', async () => {
+      const db = testEnv.authenticatedContext('admin_1').firestore();
+
+      // First create target patient to test against
+      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients', 'patient_test_ct'), {
+        id: 'patient_test_ct',
+        mrn: 'MRN-VAL-CT',
+        firstName: 'Val',
+        lastName: 'CareTeam',
+        dob: '1980-01-01',
+        gender: 'female',
+        email: 'val@example.com',
+        phone: '123-456-7890',
+        createdAt: '2026-01-01T00:00:00Z'
+      }));
+
+      // Active care team entries per seed
+      const activeEntries = CANONICAL_SEED.careTeams.filter((ct) => ct.status === 'active');
+      for (const ct of activeEntries) {
+        // Look up userDoc in db to ensure matching displayName
+        const userDoc = await getDoc(doc(db, 'users', ct.userId));
+        const displayName = userDoc.data()?.displayName || 'Staff';
+
+        await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/care_teams', `patient_test_ct_${ct.userId}`), {
+          patientId: 'patient_test_ct',
+          userId: ct.userId,
+          displayName,
+          role: ct.role,
+          status: 'active',
+          createdAt: ct.joinedAt || '2026-01-02T01:00:00Z'
+        }));
+      }
+    });
+
+    it('ALLOW: admin creates and removes nurse_amy on patient_C care-team (status: removed)', async () => {
+      const db = testEnv.authenticatedContext('admin_1').firestore();
+      // Ensure patient_C exists
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await setDoc(doc(context.firestore(), 'organizations/clinic_a/patients/patient_C'), {
+          id: 'patient_C',
+          mrn: 'MRN-003',
+          firstName: 'Carol',
+          lastName: 'White',
+          dob: '1992-08-30',
+          gender: 'female',
+          email: 'carol@example.com',
+          phone: '+15550100003',
+          createdAt: '2026-01-02T00:00:00Z'
+        });
+      });
+
+      const userDoc = await getDoc(doc(db, 'users', 'nurse_amy'));
+      const displayName = userDoc.data()?.displayName || 'Nurse Amy';
+
+      // Create as active first (per care team create rule status must be active and doc id == patientId + '_' + userId)
+      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/care_teams', 'patient_C_nurse_amy'), {
+        patientId: 'patient_C',
+        userId: 'nurse_amy',
+        displayName,
+        role: 'nurse',
+        status: 'active',
+        createdAt: '2026-01-02T01:00:00Z'
+      }));
+
+      // Update to status: 'removed'
+      await assertSucceeds(updateDoc(doc(db, 'organizations/clinic_a/care_teams', 'patient_C_nurse_amy'), {
+        status: 'removed',
+        removedAt: '2026-01-15T00:00:00Z'
+      }));
+    });
+
+    it('ALLOW: dr_smith runs real getStaffPatients() and sees exactly their active assigned patients', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        for (const p of CANONICAL_SEED.patients) {
+          await setDoc(doc(adminDb, 'organizations/clinic_a/patients', p.id), { ...p });
+        }
+        for (const ct of CANONICAL_SEED.careTeams) {
+          const userDoc = await getDoc(doc(adminDb, 'users', ct.userId));
+          const displayName = userDoc.data()?.displayName || 'Staff';
+          await setDoc(doc(adminDb, 'organizations/clinic_a/care_teams', `${ct.patientId}_${ct.userId}`), {
+            ...ct,
+            displayName
+          });
+        }
+      });
+
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const results = await getStaffPatients(db, 'clinic_a', 'dr_smith');
+
+      assert.strictEqual(results.length, 3);
+      assert.strictEqual(results.every((r) => r.status === 'fulfilled'), true);
+
+      const patientIds = results.map((r) => r.status === 'fulfilled' ? r.value.patient.id : null).sort();
+      assert.deepStrictEqual(patientIds, ['patient_A', 'patient_B', 'patient_C']);
+
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          assert.strictEqual(r.value.memberRole, 'clinician');
+        }
+      }
+    });
+
+    it('ALLOW: dr_jones runs real getStaffPatients() and sees exactly their 2 active assigned patients', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        // Remove patient_B_dr_jones from outer beforeEach so dr_jones has canonical assignments only
+        await deleteDoc(doc(adminDb, 'organizations/clinic_a/care_teams/patient_B_dr_jones'));
+        for (const p of CANONICAL_SEED.patients) {
+          await setDoc(doc(adminDb, 'organizations/clinic_a/patients', p.id), { ...p });
+        }
+        for (const ct of CANONICAL_SEED.careTeams) {
+          const userDoc = await getDoc(doc(adminDb, 'users', ct.userId));
+          const displayName = userDoc.data()?.displayName || 'Staff';
+          await setDoc(doc(adminDb, 'organizations/clinic_a/care_teams', `${ct.patientId}_${ct.userId}`), {
+            ...ct,
+            displayName
+          });
+        }
+      });
+
+      const db = testEnv.authenticatedContext('dr_jones').firestore();
+      const results = await getStaffPatients(db, 'clinic_a', 'dr_jones');
+
+      assert.strictEqual(results.length, 2);
+      assert.strictEqual(results.every((r) => r.status === 'fulfilled'), true);
+
+      const patientIds = results.map((r) => r.status === 'fulfilled' ? r.value.patient.id : null).sort();
+      assert.deepStrictEqual(patientIds, ['patient_C', 'patient_D']);
+
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          assert.strictEqual(r.value.memberRole, 'clinician');
+        }
+      }
+    });
+
+    it('ALLOW: nurse_amy runs real getStaffPatients() and sees only active patients (patient_C excluded entirely)', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        for (const p of CANONICAL_SEED.patients) {
+          await setDoc(doc(adminDb, 'organizations/clinic_a/patients', p.id), { ...p });
+        }
+        for (const ct of CANONICAL_SEED.careTeams) {
+          const userDoc = await getDoc(doc(adminDb, 'users', ct.userId));
+          const displayName = userDoc.data()?.displayName || 'Staff';
+          await setDoc(doc(adminDb, 'organizations/clinic_a/care_teams', `${ct.patientId}_${ct.userId}`), {
+            ...ct,
+            displayName
+          });
+        }
+      });
+
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      const results = await getStaffPatients(db, 'clinic_a', 'nurse_amy');
+
+      // nurse_amy has active assignments on patient_A and patient_B, and 'removed' on patient_C
+      // patient_C must not appear at all, neither as fulfilled nor as rejected
+      assert.strictEqual(results.length, 2);
+      assert.strictEqual(results.every((r) => r.status === 'fulfilled'), true);
+
+      const patientIds = results.map((r) => r.status === 'fulfilled' ? r.value.patient.id : null).sort();
+      assert.deepStrictEqual(patientIds, ['patient_A', 'patient_B']);
+
+      // Double check patient_C is nowhere in results
+      const containsPatientC = results.some((r) =>
+        (r.status === 'fulfilled' && r.value.patient.id === 'patient_C') ||
+        (r.status === 'rejected' && r.patientId === 'patient_C')
+      );
+      assert.strictEqual(containsPatientC, false);
+    });
+
+    it('ALLOW: dr_unassigned runs real getStaffPatients() and gets an empty array (0 patients)', async () => {
+      const db = testEnv.authenticatedContext('dr_unassigned').firestore();
+      const results = await getStaffPatients(db, 'clinic_a', 'dr_unassigned');
+
+      assert.strictEqual(results.length, 0);
+      assert.deepStrictEqual(results, []);
+    });
+
+    it('DENY: dr_unassigned attempting direct get on any patient chart is denied', async () => {
+      const db = testEnv.authenticatedContext('dr_unassigned').firestore();
+
+      // dr_unassigned is in clinic_a but on no care teams
+      await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_A')));
+      await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_B')));
+      await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_C')));
+      await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_D')));
     });
   });
 });
