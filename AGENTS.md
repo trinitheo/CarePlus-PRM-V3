@@ -29,9 +29,6 @@ clinician, nurse, patient, admin. No other roles until I ask for them.
   care team (or being that patient). Never from role alone.
 - Admin manages accounts and roles. Admin does not get chart access.
 - No anonymous sign-in in production. Real accounts only.
-- A staff member who becomes a patient registers a separate account with a
-  different email. patients.linkedUserId may only point to a /users doc with
-  role == 'patient'.
 - One person, one MRN. No MRN is created until a person becomes a patient.
   Before any patient file is created, existing patients are searched by name
   and date of birth, and a match is reused.
@@ -47,6 +44,7 @@ clinician, nurse, patient, admin. No other roles until I ask for them.
   directly from the browser.
 - Every security rule has tests, including tests that prove access is DENIED.
 - Command and test output is pasted verbatim, never retyped or summarised.
+- AGENTS.md is changed only when I explicitly ask. Never as a side effect of another task.
 - Colors come from design tokens, never raw hex. Components stay under ~300
   lines.
 
