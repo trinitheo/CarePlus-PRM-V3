@@ -1,4 +1,4 @@
-import type { PatientRecord, UserRecord, CareTeamMemberRecord } from '../types';
+import type { PatientRecord, UserRecord, PatientOrgCareTeam } from '../types';
 
 export interface StaffPatientRow {
   patient: PatientRecord;
@@ -12,5 +12,6 @@ export type PatientLoadResult =
 export interface DataService {
   getStaffPatients(orgId: string, staffUid: string): Promise<PatientLoadResult[]>;
   getPatient(orgId: string, patientId: string): Promise<PatientRecord | null>;
-  getUser(orgId: string, userId: string): Promise<UserRecord | null>;
+  getUser(userId: string): Promise<UserRecord | null>;
+  getMyCareTeams(patientUid: string): Promise<PatientOrgCareTeam[]>;
 }

@@ -1,5 +1,6 @@
 import {
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -7,7 +8,7 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore';
-import type { PatientRecord, UserRecord, CareTeamMemberRecord } from '../types';
+import type { PatientRecord, UserRecord, CareTeamMemberRecord, PatientOrgCareTeam } from '../types';
 import type { DataService, PatientLoadResult, StaffPatientRow } from './types';
 import type { SessionService } from './session';
 
@@ -58,6 +59,7 @@ export async function getStaffPatients(
           gender: pData.gender,
           email: pData.email,
           phone: pData.phone,
+          orgName: pData.orgName,
           linkedUserId: pData.linkedUserId,
           createdAt: pData.createdAt,
         },
@@ -84,6 +86,56 @@ export async function getStaffPatients(
   });
 }
 
+/**
+ * Real production query used for patient care team view across organizations.
+ * Uses collectionGroup query for patients with linkedUserId == patientUid,
+ * then fetches each organization's active care-team members for that patient.
+ */
+export async function getMyCareTeams(
+  db: any,
+  patientUid: string
+): Promise<PatientOrgCareTeam[]> {
+  const patientsQuery = query(
+    collectionGroup(db, 'patients'),
+    where('linkedUserId', '==', patientUid)
+  );
+  const patientSnaps = await getDocs(patientsQuery);
+
+  const orgCareTeams: PatientOrgCareTeam[] = [];
+
+  for (const pSnap of patientSnaps.docs) {
+    const patientData = pSnap.data() as PatientRecord;
+    const orgId = pSnap.ref.parent.parent?.id;
+    if (!orgId) continue;
+
+    // Fetch active care team members for this patient
+    const ctQuery = query(
+      collection(db, 'organizations', orgId, 'care_teams'),
+      where('patientId', '==', pSnap.id),
+      where('status', '==', 'active')
+    );
+    const ctSnaps = await getDocs(ctQuery);
+
+    const members = ctSnaps.docs.map((ctDoc) => {
+      const data = ctDoc.data();
+      return {
+        userId: data.userId as string,
+        displayName: data.displayName as string,
+        role: data.role as 'clinician' | 'nurse',
+      };
+    });
+
+    orgCareTeams.push({
+      orgId,
+      orgName: patientData.orgName,
+      patientId: pSnap.id,
+      members,
+    });
+  }
+
+  return orgCareTeams;
+}
+
 export class FirestoreDataService implements DataService {
   private db: Firestore;
 
@@ -102,11 +154,15 @@ export class FirestoreDataService implements DataService {
     return { ...data, id: pSnap.id };
   }
 
-  async getUser(orgId: string, userId: string): Promise<UserRecord | null> {
-    const uSnap = await getDoc(doc(this.db, 'organizations', orgId, 'users', userId));
+  async getUser(userId: string): Promise<UserRecord | null> {
+    const uSnap = await getDoc(doc(this.db, 'users', userId));
     if (!uSnap.exists()) return null;
     const data = uSnap.data() as UserRecord;
     return { ...data, uid: uSnap.id };
+  }
+
+  async getMyCareTeams(patientUid: string): Promise<PatientOrgCareTeam[]> {
+    return getMyCareTeams(this.db, patientUid);
   }
 }
 

@@ -86,9 +86,12 @@ service cloud.firestore {
 
         allow create: if isOrgAdmin(orgId) &&
           request.resource.data.keys().hasOnly([
-            'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'linkedUserId', 'createdAt'
+            'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'orgName', 'linkedUserId', 'createdAt'
           ]) &&
           request.resource.data.id == patientId &&
+          ('orgName' in request.resource.data) && request.resource.data.orgName is string &&
+          exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+          request.resource.data.orgName == get(/databases/$(database)/documents/organizations/$(orgId)).data.name &&
           ('mrn' in request.resource.data) && request.resource.data.mrn is string && request.resource.data.mrn.size() > 0 &&
           ('firstName' in request.resource.data) && request.resource.data.firstName is string && request.resource.data.firstName.size() > 0 &&
           ('lastName' in request.resource.data) && request.resource.data.lastName is string && request.resource.data.lastName.size() > 0 &&
@@ -103,10 +106,12 @@ service cloud.firestore {
         // - never set linkedUserId to request.auth.uid
         // - if linkedUserId is set/changed, target user must exist and have role == 'patient'
         // - document id cannot be changed to diverge from patientId
+        // - orgName is immutable (cannot change if provided)
         // - mrn, firstName, lastName must be non-empty strings if provided
         // - mrn cannot be removed if already set
         allow update: if
           (!('id' in request.resource.data) || request.resource.data.id == patientId) &&
+          (!('orgName' in request.resource.data) || request.resource.data.orgName == resource.data.orgName) &&
           (!('mrn' in request.resource.data) || (request.resource.data.mrn is string && request.resource.data.mrn.size() > 0)) &&
           (!('firstName' in request.resource.data) || (request.resource.data.firstName is string && request.resource.data.firstName.size() > 0)) &&
           (!('lastName' in request.resource.data) || (request.resource.data.lastName is string && request.resource.data.lastName.size() > 0)) &&

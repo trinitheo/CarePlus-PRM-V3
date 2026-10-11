@@ -14,7 +14,8 @@ export const PatientPanel: React.FC<PatientPanelProps> = ({ currentUser }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const orgId = 'clinic_a';
+  // Use the signed-in staff member's orgId
+  const orgId = (currentUser as any).orgId || 'clinic_a';
 
   const loadData = async () => {
     setLoading(true);

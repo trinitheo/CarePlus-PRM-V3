@@ -25,8 +25,22 @@ export interface PatientRecord {
   gender: Gender;
   email: string;
   phone: string;
+  orgName: string;
   linkedUserId?: string;
   createdAt: string;
+}
+
+export interface PatientCareTeamMember {
+  userId: string;
+  displayName: string;
+  role: 'clinician' | 'nurse';
+}
+
+export interface PatientOrgCareTeam {
+  orgId: string;
+  orgName: string;
+  patientId: string;
+  members: PatientCareTeamMember[];
 }
 
 export type CareTeamStatus = 'active' | 'removed';

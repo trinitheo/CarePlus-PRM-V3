@@ -4,6 +4,7 @@ import { Heart, Shield } from 'lucide-react';
 import { sessionService } from './services';
 import type { UserRecord } from './types';
 import { PatientPanel } from './components/PatientPanel';
+import { PatientCareTeamView } from './components/PatientCareTeamView';
 import { RolePlaceholder } from './components/RolePlaceholder';
 import { tokens } from './theme/tokens';
 
@@ -88,6 +89,8 @@ const MainApp: React.FC = () => {
         {currentUser ? (
           isCareTeamMember ? (
             <PatientPanel currentUser={currentUser} />
+          ) : currentUser.role === 'patient' ? (
+            <PatientCareTeamView currentUser={currentUser} />
           ) : (
             <RolePlaceholder currentUser={currentUser} />
           )

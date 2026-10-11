@@ -13,6 +13,13 @@ export const DevUserSwitcher: React.FC<DevUserSwitcherProps> = ({
   currentUser,
   onSelectUser,
 }) => {
+  // Aggregate all seeded accounts: firstAdmins, staffUsers, patientUsers
+  const allUsers = [
+    ...CANONICAL_SEED.firstAdmins.map((u) => ({ uid: u.id, ...u.data })),
+    ...CANONICAL_SEED.staffUsers.map((u) => ({ uid: u.id, ...u.data })),
+    ...CANONICAL_SEED.patientUsers.map((u) => ({ uid: u.id, ...u.data })),
+  ];
+
   return (
     <div className={`p-4 rounded-xl border ${tokens.surfaces.card} ${tokens.borders.default} shadow-xs space-y-3`}>
       <div className="flex items-center justify-between">
@@ -28,7 +35,7 @@ export const DevUserSwitcher: React.FC<DevUserSwitcherProps> = ({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {CANONICAL_SEED.users.map((user) => {
+        {allUsers.map((user) => {
           const isSelected = currentUser?.uid === user.uid;
           return (
             <button
@@ -48,6 +55,9 @@ export const DevUserSwitcher: React.FC<DevUserSwitcherProps> = ({
               >
                 {user.role}
               </span>
+              {'orgId' in user && user.orgId && (
+                <span className="text-[10px] text-text-muted font-mono">({user.orgId})</span>
+              )}
             </button>
           );
         })}
