@@ -11,6 +11,7 @@ export interface UserRecord {
   displayName: string;
   phone?: string;
   email?: string;
+  orgId?: string;
   createdAt?: string;
 }
 

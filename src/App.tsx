@@ -1,11 +1,13 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { Heart, Shield } from 'lucide-react';
-import { sessionService } from './services';
-import type { UserRecord } from './types';
+import { Heart, Shield, LogOut } from 'lucide-react';
+import { sessionService, type SessionState } from './services';
 import { PatientPanel } from './components/PatientPanel';
 import { PatientCareTeamView } from './components/PatientCareTeamView';
 import { RolePlaceholder } from './components/RolePlaceholder';
+import { SignInScreen } from './components/SignInScreen';
+import { AccountNotSetUpScreen } from './components/AccountNotSetUpScreen';
+import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { tokens } from './theme/tokens';
 
 // Lazy-load dev-only components so they are entirely excluded from production
@@ -18,11 +20,11 @@ const RulesMatrix = import.meta.env.DEV
   : null;
 
 const MainApp: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserRecord | null>(sessionService.getCurrentUser());
+  const [sessionState, setSessionState] = useState<SessionState>(sessionService.getState());
 
   useEffect(() => {
-    const unsubscribe = sessionService.subscribe((user) => {
-      setCurrentUser(user);
+    const unsubscribe = sessionService.subscribe((state) => {
+      setSessionState(state);
     });
     return () => unsubscribe();
   }, []);
@@ -33,7 +35,14 @@ const MainApp: React.FC = () => {
     }
   };
 
+  const currentUser = sessionState.user;
   const isCareTeamMember = currentUser?.role === 'clinician' || currentUser?.role === 'nurse';
+
+  const handleSignOut = async () => {
+    if (sessionService.signOut) {
+      await sessionService.signOut();
+    }
+  };
 
   return (
     <div className={`min-h-screen ${tokens.surfaces.canvas} text-text-body font-sans`}>
@@ -72,6 +81,17 @@ const MainApp: React.FC = () => {
                 </span>
               </div>
             )}
+
+            {(sessionState.status === 'signedIn' || sessionState.status === 'notSetUp') && sessionService.signOut && (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border-default hover:bg-surface-hover text-text-muted cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign Out
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -85,8 +105,30 @@ const MainApp: React.FC = () => {
           </Suspense>
         )}
 
-        {/* Dynamic Role-Based View */}
-        {currentUser ? (
+        {/* Dynamic View based on Session Status */}
+        {sessionState.status === 'configError' ? (
+          <ConfigurationErrorScreen errorMessage={sessionState.errorMessage} />
+        ) : sessionState.status === 'loading' ? (
+          <div className={`p-12 rounded-xl border text-center ${tokens.surfaces.card} ${tokens.borders.default}`}>
+            <p className={`text-sm ${tokens.text.muted}`}>Loading user session...</p>
+          </div>
+        ) : sessionState.status === 'notSetUp' ? (
+          <AccountNotSetUpScreen />
+        ) : sessionState.status === 'error' ? (
+          <div className="max-w-md mx-auto my-12 p-6 rounded-2xl border border-status-error/30 bg-status-error/10 text-center">
+            <div className="text-sm font-semibold text-status-error mb-2">Session Error</div>
+            <div className="text-xs text-text-muted mb-4">{sessionState.errorMessage || 'An error occurred.'}</div>
+            {sessionService.signOut && (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-surface-card border border-border-default hover:bg-surface-hover text-text-title cursor-pointer"
+              >
+                Sign Out
+              </button>
+            )}
+          </div>
+        ) : sessionState.status === 'signedIn' && currentUser ? (
           isCareTeamMember ? (
             <PatientPanel currentUser={currentUser} />
           ) : currentUser.role === 'patient' ? (
@@ -95,9 +137,7 @@ const MainApp: React.FC = () => {
             <RolePlaceholder currentUser={currentUser} />
           )
         ) : (
-          <div className={`p-12 rounded-xl border text-center ${tokens.surfaces.card} ${tokens.borders.default}`}>
-            <p className={`text-sm ${tokens.text.muted}`}>No active user session. Please sign in.</p>
-          </div>
+          <SignInScreen />
         )}
       </main>
     </div>

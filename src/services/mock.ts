@@ -1,6 +1,6 @@
 import type { PatientRecord, UserRecord, CareTeamMemberRecord, PatientOrgCareTeam } from '../types';
 import type { DataService, PatientLoadResult, StaffPatientRow } from './types';
-import type { SessionService } from './session';
+import type { SessionService, SessionState } from './session';
 import { CANONICAL_SEED } from './seed';
 
 export class MockDataService implements DataService {
@@ -174,7 +174,7 @@ export class MockDataService implements DataService {
 
 export class MockSessionService implements SessionService {
   private currentUser: UserRecord | null = null;
-  private listeners: Set<(user: UserRecord | null) => void> = new Set();
+  private listeners: Set<(state: SessionState) => void> = new Set();
   private dataService: MockDataService;
 
   constructor(dataService: MockDataService) {
@@ -191,26 +191,57 @@ export class MockSessionService implements SessionService {
     this.currentUser = defaultUser;
   }
 
+  getState(): SessionState {
+    return {
+      status: this.currentUser ? 'signedIn' : 'signedOut',
+      user: this.currentUser ? { ...this.currentUser } : null,
+    };
+  }
+
   getCurrentUser(): UserRecord | null {
     return this.currentUser ? { ...this.currentUser } : null;
   }
 
-  subscribe(callback: (user: UserRecord | null) => void): () => void {
+  subscribe(callback: (state: SessionState) => void): () => void {
     this.listeners.add(callback);
-    callback(this.getCurrentUser());
+    callback(this.getState());
     return () => {
       this.listeners.delete(callback);
     };
   }
 
+  private notify() {
+    const state = this.getState();
+    for (const listener of this.listeners) {
+      listener(state);
+    }
+  }
+
   async signInAs(uid: string): Promise<void> {
+    if (!uid) {
+      this.currentUser = null;
+      this.notify();
+      return;
+    }
     const user = await this.dataService.getUser(uid);
     if (!user) {
       throw new Error(`User with uid ${uid} not found`);
     }
     this.currentUser = user;
-    for (const listener of this.listeners) {
-      listener(this.getCurrentUser());
-    }
+    this.notify();
+  }
+
+  async signIn(email: string): Promise<void> {
+    // Basic mock sign in
+    this.notify();
+  }
+
+  async signOut(): Promise<void> {
+    this.currentUser = null;
+    this.notify();
+  }
+
+  async sendPasswordReset(): Promise<void> {
+    // No-op mock
   }
 }

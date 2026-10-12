@@ -40,7 +40,7 @@ clinician, nurse, patient, admin. No other roles until I ask for them.
   build.
 - Mock mode is for exercising features only. Security is proven only by the
   emulator rules tests. Never write tests against mock data.
-- No API keys in client code. AI features call a server, never the model
+- No secret keys in client code. The Firebase web config is public by design and lives in src/services/firebaseConfig.ts. AI features call a server, never the model
   directly from the browser.
 - Every security rule has tests, including tests that prove access is DENIED.
 - Command and test output is pasted verbatim, never retyped or summarised.

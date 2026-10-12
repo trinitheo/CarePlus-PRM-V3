@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "firebase emulators:exec --only firestore \"tsx --test test/firestore.rules.test.ts\"",
+    "test": "firebase emulators:exec --only firestore,auth \"tsx --test --test-concurrency=1 test/*.test.ts\"",
     "test:rules": "firebase emulators:exec --only firestore \"tsx --test test/firestore.rules.test.ts\""
   },
   "dependencies": {

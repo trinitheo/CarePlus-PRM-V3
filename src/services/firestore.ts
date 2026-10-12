@@ -4,13 +4,14 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   where,
   type Firestore,
 } from 'firebase/firestore';
 import type { PatientRecord, UserRecord, CareTeamMemberRecord, PatientOrgCareTeam } from '../types';
 import type { DataService, PatientLoadResult, StaffPatientRow } from './types';
-import type { SessionService } from './session';
+import type { SessionService, SessionState } from './session';
 
 /**
  * Real production query used for staff (clinician/nurse) patient panel.
@@ -166,24 +167,116 @@ export class FirestoreDataService implements DataService {
   }
 }
 
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
+  type Auth,
+} from 'firebase/auth';
+
 /**
  * Firestore Session Service:
- * Production fails closed. Does NOT allow arbitrary signInAs().
- * (Real Firebase Auth integration follows in a dedicated auth task).
+ * Manages Firebase Auth state and loads user documents from Firestore /users/{uid}.
+ * Follows injectable constructor pattern: accepts (auth, db).
  */
 export class FirestoreSessionService implements SessionService {
-  private currentUser: UserRecord | null = null;
-  private listeners: Set<(user: UserRecord | null) => void> = new Set();
+  private auth: Auth;
+  private db: Firestore;
+  private state: SessionState = { status: 'loading', user: null };
+  private listeners: Set<(state: SessionState) => void> = new Set();
+  private unsubscribeAuth?: () => void;
+  private unsubscribeUserDoc?: () => void;
 
-  getCurrentUser(): UserRecord | null {
-    return this.currentUser;
+  constructor(auth: Auth, db: Firestore) {
+    this.auth = auth;
+    this.db = db;
+
+    this.unsubscribeAuth = onAuthStateChanged(this.auth, (firebaseUser) => {
+      if (this.unsubscribeUserDoc) {
+        this.unsubscribeUserDoc();
+        this.unsubscribeUserDoc = undefined;
+      }
+
+      if (!firebaseUser) {
+        this.state = { status: 'signedOut', user: null };
+        this.notify();
+        return;
+      }
+
+      this.state = { status: 'loading', user: null };
+      this.notify();
+
+      const uRef = doc(this.db, 'users', firebaseUser.uid);
+      this.unsubscribeUserDoc = onSnapshot(
+        uRef,
+        (uSnap) => {
+          if (uSnap.exists()) {
+            const data = uSnap.data() as UserRecord;
+            this.state = {
+              status: 'signedIn',
+              user: { ...data, uid: uSnap.id },
+            };
+          } else {
+            // Signed in but no /users document -> distinct notSetUp state
+            this.state = { status: 'notSetUp', user: null };
+          }
+          this.notify();
+        },
+        (err: any) => {
+          // Failed read (e.g., permission-denied or error) -> error state
+          this.state = {
+            status: 'error',
+            user: null,
+            errorMessage: err?.message || String(err),
+          };
+          this.notify();
+        }
+      );
+    });
   }
 
-  subscribe(callback: (user: UserRecord | null) => void): () => void {
+  getState(): SessionState {
+    return { ...this.state };
+  }
+
+  getCurrentUser(): UserRecord | null {
+    return this.state.user ? { ...this.state.user } : null;
+  }
+
+  subscribe(callback: (state: SessionState) => void): () => void {
     this.listeners.add(callback);
-    callback(this.currentUser);
+    callback(this.getState());
     return () => {
       this.listeners.delete(callback);
     };
+  }
+
+  private notify() {
+    const currentState = this.getState();
+    for (const listener of this.listeners) {
+      listener(currentState);
+    }
+  }
+
+  async signIn(email: string, password: string): Promise<void> {
+    await signInWithEmailAndPassword(this.auth, email, password);
+  }
+
+  async signOut(): Promise<void> {
+    await firebaseSignOut(this.auth);
+  }
+
+  async sendPasswordReset(email: string): Promise<void> {
+    await firebaseSendPasswordResetEmail(this.auth, email);
+  }
+
+  destroy() {
+    if (this.unsubscribeUserDoc) {
+      this.unsubscribeUserDoc();
+    }
+    if (this.unsubscribeAuth) {
+      this.unsubscribeAuth();
+    }
   }
 }
