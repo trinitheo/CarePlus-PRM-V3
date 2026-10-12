@@ -131,37 +131,89 @@ service cloud.firestore {
 
         match /notes/{noteId} {
           allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
-          allow create: if !isPlatformOwner() && isActiveCareTeamMember(orgId, patientId) &&
-                        request.resource.data.authorId == request.auth.uid;
-          allow update: if !isPlatformOwner() && resource.data.authorId == request.auth.uid &&
-                           isActiveCareTeamMember(orgId, patientId) &&
-                           request.resource.data.authorId == resource.data.authorId;
+          allow create: if !isPlatformOwner() &&
+                        isActiveCareTeamMember(orgId, patientId) &&
+                        request.resource.data.keys().hasAll(['authorId', 'body', 'createdAt']) &&
+                        request.resource.data.keys().hasOnly(['authorId', 'body', 'createdAt', 'correctsId']) &&
+                        request.resource.data.authorId == request.auth.uid &&
+                        request.resource.data.body is string &&
+                        request.resource.data.body.size() >= 1 &&
+                        request.resource.data.body.size() <= 20000 &&
+                        request.resource.data.createdAt == request.time &&
+                        (!('correctsId' in request.resource.data) ||
+                         (request.resource.data.correctsId is string &&
+                          exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/notes/$(request.resource.data.correctsId)) &&
+                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/notes/$(request.resource.data.correctsId)).data.authorId == request.auth.uid));
+          allow update: if false;
           allow delete: if false;
         }
 
         match /vitals/{vitalId} {
           allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
-          allow create: if !isPlatformOwner() && (
-                            (isLinkedPatient(orgId, patientId) &&
-                             request.resource.data.source == 'patient' &&
-                             request.resource.data.authorId == request.auth.uid) ||
-                            (isActiveCareTeamMember(orgId, patientId) &&
-                             request.resource.data.source == 'clinic' &&
-                             request.resource.data.authorId == request.auth.uid)
-                           );
-          allow update: if !isPlatformOwner() && resource.data.authorId == request.auth.uid &&
-                           isActiveCareTeamMember(orgId, patientId) &&
-                           request.resource.data.authorId == resource.data.authorId &&
-                           request.resource.data.source == resource.data.source;
+          allow create: if !isPlatformOwner() &&
+                        request.resource.data.keys().hasAll(['authorId', 'source', 'recordedAt', 'createdAt']) &&
+                        request.resource.data.keys().hasOnly([
+                          'authorId', 'source', 'recordedAt', 'createdAt', 'correctsId',
+                          'systolic', 'diastolic', 'heartRate', 'respRate', 'tempC', 'spo2', 'weightKg',
+                          'glucoseMgDl', 'glucoseContext', 'consciousness', 'onOxygen'
+                        ]) &&
+                        request.resource.data.authorId == request.auth.uid &&
+                        request.resource.data.createdAt == request.time &&
+                        request.resource.data.recordedAt is timestamp &&
+                        request.resource.data.recordedAt <= request.time &&
+                        ((isLinkedPatient(orgId, patientId) && request.resource.data.source == 'patient') ||
+                         (isActiveCareTeamMember(orgId, patientId) && request.resource.data.source == 'clinic')) &&
+                        (!('correctsId' in request.resource.data) ||
+                         (request.resource.data.correctsId is string &&
+                          exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/vitals/$(request.resource.data.correctsId)) &&
+                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/vitals/$(request.resource.data.correctsId)).data.authorId == request.auth.uid)) &&
+                        (('systolic' in request.resource.data) || ('heartRate' in request.resource.data) ||
+                         ('respRate' in request.resource.data) || ('tempC' in request.resource.data) ||
+                         ('spo2' in request.resource.data) || ('weightKg' in request.resource.data) ||
+                         ('glucoseMgDl' in request.resource.data) || ('consciousness' in request.resource.data)) &&
+                        ((('systolic' in request.resource.data) == ('diastolic' in request.resource.data)) &&
+                         (!('systolic' in request.resource.data) ||
+                          (request.resource.data.systolic is number && request.resource.data.systolic >= 40 && request.resource.data.systolic <= 300 &&
+                           request.resource.data.diastolic is number && request.resource.data.diastolic >= 20 && request.resource.data.diastolic <= 200 &&
+                           request.resource.data.diastolic < request.resource.data.systolic))) &&
+                        (!('heartRate' in request.resource.data) || (request.resource.data.heartRate is number && request.resource.data.heartRate >= 20 && request.resource.data.heartRate <= 300)) &&
+                        (!('respRate' in request.resource.data) || (request.resource.data.respRate is number && request.resource.data.respRate >= 4 && request.resource.data.respRate <= 80)) &&
+                        (!('tempC' in request.resource.data) || (request.resource.data.tempC is number && request.resource.data.tempC >= 25 && request.resource.data.tempC <= 45)) &&
+                        (!('spo2' in request.resource.data) || (request.resource.data.spo2 is number && request.resource.data.spo2 >= 50 && request.resource.data.spo2 <= 100)) &&
+                        (!('weightKg' in request.resource.data) || (request.resource.data.weightKg is number && request.resource.data.weightKg >= 0.3 && request.resource.data.weightKg <= 500)) &&
+                        (!('glucoseMgDl' in request.resource.data) || (request.resource.data.glucoseMgDl is number && request.resource.data.glucoseMgDl >= 10 && request.resource.data.glucoseMgDl <= 1000)) &&
+                        (!('glucoseContext' in request.resource.data) || (('glucoseMgDl' in request.resource.data) && request.resource.data.glucoseContext in ['fasting', 'random', 'postprandial'])) &&
+                        (!('consciousness' in request.resource.data) || (request.resource.data.consciousness in ['A', 'C', 'V', 'P', 'U'])) &&
+                        (!('onOxygen' in request.resource.data) || (request.resource.data.onOxygen is bool));
+          allow update: if false;
           allow delete: if false;
         }
 
         match /prescriptions/{prescriptionId} {
           allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
-          allow create: if !isPlatformOwner() && isActiveClinicianOnTeam(orgId, patientId) &&
-                        request.resource.data.authorId == request.auth.uid;
-          allow update: if !isPlatformOwner() && isActiveClinicianOnTeam(orgId, patientId) &&
-                           request.resource.data.authorId == resource.data.authorId;
+          allow create: if !isPlatformOwner() &&
+                        isActiveClinicianOnTeam(orgId, patientId) &&
+                        request.resource.data.keys().hasAll(['authorId', 'medication', 'dose', 'route', 'frequency', 'status', 'createdAt']) &&
+                        request.resource.data.keys().hasOnly(['authorId', 'medication', 'dose', 'route', 'frequency', 'instructions', 'status', 'createdAt', 'correctsId']) &&
+                        request.resource.data.authorId == request.auth.uid &&
+                        request.resource.data.medication is string && request.resource.data.medication.size() > 0 &&
+                        request.resource.data.dose is string && request.resource.data.dose.size() > 0 &&
+                        request.resource.data.route is string && request.resource.data.route.size() > 0 &&
+                        request.resource.data.frequency is string && request.resource.data.frequency.size() > 0 &&
+                        (!('instructions' in request.resource.data) || request.resource.data.instructions is string) &&
+                        request.resource.data.status == 'active' &&
+                        request.resource.data.createdAt == request.time &&
+                        (!('correctsId' in request.resource.data) ||
+                         (request.resource.data.correctsId is string &&
+                          exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)) &&
+                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)).data.authorId == request.auth.uid));
+          allow update: if !isPlatformOwner() &&
+                           isActiveClinicianOnTeam(orgId, patientId) &&
+                           resource.data.status == 'active' &&
+                           request.resource.data.status == 'discontinued' &&
+                           request.resource.data.discontinuedAt == request.time &&
+                           request.resource.data.discontinuedBy == request.auth.uid &&
+                           onlyChanges(['status', 'discontinuedAt', 'discontinuedBy']);
           allow delete: if false;
         }
       }

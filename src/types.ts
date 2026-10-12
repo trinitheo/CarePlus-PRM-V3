@@ -60,26 +60,34 @@ export interface ClinicalNote {
   id?: string;
   patientId?: string;
   authorId: string;
-  content: string;
+  body: string;
   createdAt: string;
-  updatedAt?: string;
+  correctsId?: string;
 }
 
 export type VitalSource = 'clinic' | 'patient';
+export type GlucoseContext = 'fasting' | 'random' | 'postprandial';
+export type ConsciousnessLevel = 'A' | 'C' | 'V' | 'P' | 'U';
 
 export interface VitalRecord {
   id?: string;
   patientId?: string;
   authorId: string;
   source: VitalSource;
-  heartRate?: number;
+  recordedAt: string;
+  createdAt: string;
+  correctsId?: string;
   systolic?: number;
   diastolic?: number;
-  temperature?: number;
-  respiratoryRate?: number;
-  spO2?: number;
-  createdAt: string;
-  updatedAt?: string;
+  heartRate?: number;
+  respRate?: number;
+  tempC?: number;
+  spo2?: number;
+  weightKg?: number;
+  glucoseMgDl?: number;
+  glucoseContext?: GlucoseContext;
+  consciousness?: ConsciousnessLevel;
+  onOxygen?: boolean;
 }
 
 export interface PrescriptionRecord {
@@ -87,9 +95,13 @@ export interface PrescriptionRecord {
   patientId?: string;
   authorId: string;
   medication: string;
-  dosage: string;
+  dose: string;
+  route: string;
+  frequency: string;
   instructions?: string;
-  status?: 'active' | 'discontinued' | 'completed';
+  status: 'active' | 'discontinued';
   createdAt: string;
-  updatedAt?: string;
+  discontinuedAt?: string;
+  discontinuedBy?: string;
+  correctsId?: string;
 }

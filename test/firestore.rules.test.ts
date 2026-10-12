@@ -18,7 +18,9 @@ import {
   collectionGroup,
   getDocs,
   query,
-  where
+  where,
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import { CANONICAL_SEED } from '../src/services/seed';
 import { getStaffPatients, getMyCareTeams, FirestoreDataService } from '../src/services/firestore';
@@ -73,6 +75,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         await setDoc(doc(db, 'users/nurse_amy'), { role: 'nurse', orgId: 'clinic_a', displayName: 'Nurse Amy', phone: '444-444-4444' });
         await setDoc(doc(db, 'users/nurse_bob'), { role: 'nurse', orgId: 'clinic_a', displayName: 'Nurse Bob', phone: '555-555-5555' });
         await setDoc(doc(db, 'users/dr_removed'), { role: 'clinician', orgId: 'clinic_a', displayName: 'Dr. Removed', phone: '666-666-6666' });
+        await setDoc(doc(db, 'users/dr_brown'), { role: 'clinician', orgId: 'clinic_a', displayName: 'Dr. Brown', phone: '444-444-4444' });
         await setDoc(doc(db, 'users/unassigned_staff'), { role: 'clinician', orgId: 'clinic_a', displayName: 'Dr. Unassigned', phone: '999-999-9999' });
 
         // Patient accounts: no orgId
@@ -186,6 +189,13 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           role: 'clinician',
           status: 'active'
         });
+        await setDoc(doc(db, 'organizations/clinic_a/care_teams/patient_A_dr_brown'), {
+          patientId: 'patient_A',
+          userId: 'dr_brown',
+          displayName: 'Dr. Brown',
+          role: 'clinician',
+          status: 'active'
+        });
         await setDoc(doc(db, 'organizations/clinic_a/care_teams/patient_A_nurse_amy'), {
           patientId: 'patient_A',
           userId: 'nurse_amy',
@@ -229,37 +239,41 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         // 4. Clinical Records on Patient A in Clinic A
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
           authorId: 'dr_smith',
-          content: 'Initial assessment',
-          createdAt: '2026-01-10T00:00:00Z'
+          body: 'Initial assessment',
+          createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_removed_clinician'), {
           authorId: 'dr_removed',
-          content: 'Old note from removed clinician',
-          createdAt: '2026-01-05T00:00:00Z'
+          body: 'Old note from removed clinician',
+          createdAt: Timestamp.fromDate(new Date('2026-01-05T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_1'), {
           authorId: 'dr_smith',
           source: 'clinic',
           heartRate: 72,
-          createdAt: '2026-01-10T00:00:00Z'
+          recordedAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z')),
+          createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
           authorId: 'dr_smith',
           medication: 'Amoxicillin 500mg',
-          dosage: 'TID x 10d',
-          createdAt: '2026-01-10T00:00:00Z'
+          dose: '500mg',
+          route: 'PO',
+          frequency: 'TID x 10d',
+          status: 'active',
+          createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
         });
 
         // Clinical records on Clinic B patients
         await setDoc(doc(db, 'organizations/clinic_b/patients/patient_chen_b/notes/note_chen_1'), {
           authorId: 'dr_clinic_b',
-          content: 'Note for Chen at Clinic B',
-          createdAt: '2026-01-11T00:00:00Z'
+          body: 'Note for Chen at Clinic B',
+          createdAt: Timestamp.fromDate(new Date('2026-01-11T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_b/patients/patient_b_other/notes/note_other_1'), {
           authorId: 'dr_clinic_b',
-          content: 'Note for other patient at Clinic B',
-          createdAt: '2026-01-12T00:00:00Z'
+          body: 'Note for other patient at Clinic B',
+          createdAt: Timestamp.fromDate(new Date('2026-01-12T00:00:00Z'))
         });
       });
     }
@@ -350,15 +364,15 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       const db = testEnv.authenticatedContext('dr_smith').firestore();
       await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_2'), {
         authorId: 'dr_smith',
-        content: 'Follow-up exam note',
-        createdAt: '2026-03-02T00:00:00Z'
+        body: 'Follow-up exam note',
+        createdAt: serverTimestamp()
       }));
     });
 
-    it('ALLOW: note author still on active team can update their note', async () => {
+    it('DENY: note author on active team cannot perform in-place update on note', async () => {
       const db = testEnv.authenticatedContext('dr_smith').firestore();
-      await assertSucceeds(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
-        content: 'Initial assessment - amended with vitals check'
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
+        body: 'Initial assessment - amended with vitals check'
       }));
     });
 
@@ -367,9 +381,10 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_patient_1'), {
         authorId: 'patient_user_a',
         source: 'patient',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
         systolic: 120,
-        diastolic: 80,
-        createdAt: '2026-03-02T00:00:00Z'
+        diastolic: 80
       }));
     });
 
@@ -378,15 +393,20 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_2'), {
         authorId: 'dr_smith',
         medication: 'Lisinopril 10mg',
-        dosage: 'Daily',
-        createdAt: '2026-03-02T00:00:00Z'
+        dose: '10mg',
+        route: 'oral',
+        frequency: 'daily',
+        status: 'active',
+        createdAt: serverTimestamp()
       }));
     });
 
-    it('ALLOW: active clinician on team can update prescription authoring', async () => {
+    it('ALLOW: active clinician on team can discontinue a prescription', async () => {
       const db = testEnv.authenticatedContext('dr_smith').firestore();
       await assertSucceeds(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
-        dosage: 'BID x 10d'
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'dr_smith'
       }));
     });
 
@@ -426,8 +446,11 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_nurse'), {
         authorId: 'nurse_amy',
         medication: 'Ibuprofen',
-        dosage: 'PRN',
-        createdAt: '2026-03-02T00:00:00Z'
+        dose: '200mg',
+        route: 'oral',
+        frequency: 'PRN',
+        status: 'active',
+        createdAt: serverTimestamp()
       }));
     });
 
@@ -477,14 +500,17 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       const db = testEnv.authenticatedContext('dr_smith').firestore();
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_fake'), {
         authorId: 'dr_jones',
-        content: 'Forged note',
-        createdAt: '2026-03-02T00:00:00Z'
+        body: 'Forged note',
+        createdAt: serverTimestamp()
       }));
     });
 
-    it('DENY: changing authorId on prescription update', async () => {
+    it('DENY: changing authorId or medication on prescription update', async () => {
       const db = testEnv.authenticatedContext('dr_smith').firestore();
       await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'dr_smith',
         authorId: 'dr_jones'
       }));
     });
@@ -747,14 +773,17 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       // dr_chen_personal cannot write notes or prescriptions
       await assertFails(setDoc(doc(personalDb, 'organizations/clinic_b/patients/patient_chen_b/notes/note_fail'), {
         authorId: 'dr_chen_personal',
-        content: 'Patient writing note',
-        createdAt: '2026-03-01T00:00:00Z'
+        body: 'Patient writing note',
+        createdAt: serverTimestamp()
       }));
       await assertFails(setDoc(doc(personalDb, 'organizations/clinic_b/patients/patient_chen_b/prescriptions/rx_fail'), {
         authorId: 'dr_chen_personal',
         medication: 'Aspirin',
-        dosage: 'Daily',
-        createdAt: '2026-03-01T00:00:00Z'
+        dose: '81mg',
+        route: 'oral',
+        frequency: 'daily',
+        status: 'active',
+        createdAt: serverTimestamp()
       }));
     });
 
@@ -1164,11 +1193,11 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       const ownerDb = testEnv.authenticatedContext('platform_owner_uid', { platformOwner: true }).firestore();
       await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_owner'), {
         authorId: 'platform_owner_uid',
-        content: 'Unauthorized owner note',
-        createdAt: '2026-03-05T00:00:00Z'
+        body: 'Unauthorized owner note',
+        createdAt: serverTimestamp()
       }));
       await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
-        content: 'Tampered note content'
+        body: 'Tampered note content'
       }));
     });
 
@@ -1182,12 +1211,12 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/vitals/vital_owner'), {
         authorId: 'platform_owner_uid',
         source: 'clinic',
-        systolic: 120,
-        diastolic: 80,
-        createdAt: '2026-03-05T00:00:00Z'
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        heartRate: 70
       }));
       await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/vitals/vital_1'), {
-        systolic: 130
+        heartRate: 80
       }));
     });
 
@@ -1201,11 +1230,16 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_owner'), {
         authorId: 'platform_owner_uid',
         medication: 'Unauthorized Rx',
-        dosage: 'Daily',
-        createdAt: '2026-03-05T00:00:00Z'
+        dose: '10mg',
+        route: 'oral',
+        frequency: 'daily',
+        status: 'active',
+        createdAt: serverTimestamp()
       }));
       await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
-        dosage: 'Tampered dosage'
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'platform_owner_uid'
       }));
     });
 
@@ -1262,35 +1296,36 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_fake_clinic'), {
         authorId: 'patient_user_a',
         source: 'clinic',
-        value: 120,
-        createdAt: '2026-03-02T10:00:00Z'
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        heartRate: 72
       }));
     });
 
     it('DENY: linked patient updates a vital they entered themselves (source: patient)', async () => {
       const db = testEnv.authenticatedContext('patient_user_a').firestore();
-      // First ensure the vital exists (vital_patient_self exists or create via admin/seed)
       await testEnv.withSecurityRulesDisabled(async (context) => {
         await setDoc(doc(context.firestore(), 'organizations/clinic_a/patients/patient_A/vitals/vital_self_entered'), {
           authorId: 'patient_user_a',
           source: 'patient',
-          value: 120,
-          createdAt: '2026-03-02T10:00:00Z'
+          recordedAt: Timestamp.fromDate(new Date('2026-03-02T10:00:00Z')),
+          createdAt: Timestamp.fromDate(new Date('2026-03-02T10:00:00Z')),
+          heartRate: 72
         });
       });
       await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_self_entered'), {
-        value: 130
+        heartRate: 80
       }));
     });
 
     it('DENY: linked patient creates a source: patient vital in another patient’s chart', async () => {
       const db = testEnv.authenticatedContext('patient_user_a').firestore();
-      // patient_user_a is linked to patient_A, not patient_B
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_B/vitals/vital_cross_patient'), {
         authorId: 'patient_user_a',
         source: 'patient',
-        value: 110,
-        createdAt: '2026-03-02T10:00:00Z'
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        heartRate: 72
       }));
     });
   });
@@ -1536,6 +1571,394 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       assert.strictEqual(staff.uid, 'dr_jones');
       assert.strictEqual(staff.displayName, 'Dr. Michael Jones');
       assert.strictEqual(staff.role, 'clinician');
+    });
+  });
+
+  describe('Task 6: Clinical Integrity Rules', () => {
+    it('DENY: note with an unknown field', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_unk'), {
+        authorId: 'dr_smith',
+        body: 'Valid body',
+        createdAt: serverTimestamp(),
+        unknownField: 'bad'
+      }));
+    });
+
+    it('DENY: note with client-supplied createdAt string instead of serverTimestamp', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_client_ts'), {
+        authorId: 'dr_smith',
+        body: 'Valid body',
+        createdAt: '2026-03-01T00:00:00Z'
+      }));
+    });
+
+    it('DENY: vital with future recordedAt', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const futureTime = Timestamp.fromDate(new Date(Date.now() + 86400000));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_future'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: futureTime,
+        createdAt: serverTimestamp(),
+        heartRate: 72
+      }));
+    });
+
+    it('DENY: vital with systolic out of range (< 40 or > 300)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_sys_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 30,
+        diastolic: 20
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_sys_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 310,
+        diastolic: 80
+      }));
+    });
+
+    it('DENY: vital with diastolic out of range (< 20 or > 200)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_dia_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 120,
+        diastolic: 10
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_dia_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 250,
+        diastolic: 210
+      }));
+    });
+
+    it('DENY: vital with heartRate out of range (< 20 or > 300)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_hr_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        heartRate: 15
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_hr_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        heartRate: 350
+      }));
+    });
+
+    it('DENY: vital with respRate out of range (< 4 or > 80)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_rr_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        respRate: 2
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_rr_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        respRate: 90
+      }));
+    });
+
+    it('DENY: vital with tempC out of range (< 25 or > 45)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_temp_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        tempC: 20
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_temp_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        tempC: 50
+      }));
+    });
+
+    it('DENY: vital with spo2 out of range (< 50 or > 100)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_spo2_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        spo2: 40
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_spo2_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        spo2: 105
+      }));
+    });
+
+    it('DENY: vital with weightKg out of range (< 0.3 or > 500)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_wt_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        weightKg: 0.1
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_wt_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        weightKg: 600
+      }));
+    });
+
+    it('DENY: vital with glucoseMgDl out of range (< 10 or > 1000)', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_glu_low'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        glucoseMgDl: 5
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_glu_high'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        glucoseMgDl: 1200
+      }));
+    });
+
+    it('DENY: vital with systolic without diastolic', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_sys_only'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 120
+      }));
+    });
+
+    it('DENY: vital with diastolic >= systolic', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_dia_equal'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 120,
+        diastolic: 120
+      }));
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_dia_greater'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 100,
+        diastolic: 120
+      }));
+    });
+
+    it('DENY: vitals doc with no measurement', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_no_meas'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp()
+      }));
+    });
+
+    it('DENY: glucoseContext without glucoseMgDl', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_ctx_only'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        glucoseContext: 'fasting'
+      }));
+    });
+
+    it('DENY: invalid glucoseContext value', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_ctx_inv'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        glucoseMgDl: 100,
+        glucoseContext: 'invalid_context'
+      }));
+    });
+
+    it('DENY: invalid consciousness value', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_cons_inv'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        consciousness: 'X'
+      }));
+    });
+
+    it('DENY: non-boolean onOxygen', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_oxy_inv'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        heartRate: 70,
+        onOxygen: 'yes'
+      }));
+    });
+
+    it('DENY: editing a note', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
+        body: 'Attempted note edit'
+      }));
+    });
+
+    it('DENY: editing a vital', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_1'), {
+        heartRate: 80
+      }));
+    });
+
+    it('DENY: correction by someone other than the author', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_wrong_author'), {
+        authorId: 'nurse_amy',
+        body: 'Correcting dr smith note',
+        createdAt: serverTimestamp(),
+        correctsId: 'note_smith'
+      }));
+    });
+
+    it('DENY: correction pointing at a non-existent record', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_nonexist'), {
+        authorId: 'dr_smith',
+        body: 'Correcting non-existent note',
+        createdAt: serverTimestamp(),
+        correctsId: 'non_existent_note_999'
+      }));
+    });
+
+    it('DENY: changing a prescription’s dose', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'dr_smith',
+        dose: '1000mg'
+      }));
+    });
+
+    it('DENY: discontinuing a prescription without discontinuedBy', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp()
+      }));
+    });
+
+    it('DENY: a nurse discontinuing a prescription', async () => {
+      const db = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'nurse_amy'
+      }));
+    });
+
+    it('ALLOW: a correction by the author', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_ok'), {
+        authorId: 'dr_smith',
+        body: 'Corrected note body',
+        createdAt: serverTimestamp(),
+        correctsId: 'note_smith'
+      }));
+    });
+
+    it('ALLOW: a patient logging yesterday’s reading', async () => {
+      const db = testEnv.authenticatedContext('patient_user_a').firestore();
+      const yesterday = Timestamp.fromDate(new Date(Date.now() - 86400000));
+      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_yesterday'), {
+        authorId: 'patient_user_a',
+        source: 'patient',
+        recordedAt: yesterday,
+        createdAt: serverTimestamp(),
+        systolic: 118,
+        diastolic: 78
+      }));
+    });
+
+    it('ALLOW: a glucose-only reading (e.g. 45 mg/dL, \'random\')', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_glucose_only'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        glucoseMgDl: 45,
+        glucoseContext: 'random'
+      }));
+    });
+
+    it('ALLOW: an abnormal but plausible clinic reading: systolic 70, diastolic 40, SpO₂ 85, consciousness \'V\', onOxygen: true', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_abnormal'), {
+        authorId: 'dr_smith',
+        source: 'clinic',
+        recordedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        systolic: 70,
+        diastolic: 40,
+        spo2: 85,
+        consciousness: 'V',
+        onOxygen: true
+      }));
+    });
+
+    it('ALLOW: a clinician discontinuing another clinician’s prescription', async () => {
+      const db = testEnv.authenticatedContext('dr_brown').firestore();
+      await assertSucceeds(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1'), {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'dr_brown'
+      }));
     });
   });
 });
