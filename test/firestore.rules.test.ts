@@ -1296,7 +1296,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
   });
 
   describe('Task 3: Canonical Seed Validation & Multi-Org Patient Care Team View', () => {
-    it('ALLOW: platform owner creates all canonical organizations through real rules', async () => {
+    async function loadCanonicalSeedThroughRules() {
       await testEnv.clearFirestore();
       const ownerDb = testEnv.authenticatedContext('platform_owner', { platformOwner: true }).firestore();
 
@@ -1305,19 +1305,13 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           ...org.data
         }));
       }
-    });
-
-    it('ALLOW: platform owner creates first admins for all canonical organizations through real rules', async () => {
-      const ownerDb = testEnv.authenticatedContext('platform_owner', { platformOwner: true }).firestore();
 
       for (const admin of CANONICAL_SEED.firstAdmins) {
         await assertSucceeds(setDoc(doc(ownerDb, 'users', admin.id), {
           ...admin.data
         }));
       }
-    });
 
-    it('ALLOW: org admins create canonical staff users through real rules', async () => {
       for (const staff of CANONICAL_SEED.staffUsers) {
         const adminId = staff.data.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
         const adminDb = testEnv.authenticatedContext(adminId).firestore();
@@ -1325,18 +1319,14 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           ...staff.data
         }));
       }
-    });
 
-    it('ALLOW: admins create canonical patient users through real rules', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
       for (const patientUser of CANONICAL_SEED.patientUsers) {
         await assertSucceeds(setDoc(doc(adminDb, 'users', patientUser.id), {
           ...patientUser.data
         }));
       }
-    });
 
-    it('ALLOW: org admins create canonical patients through real rules', async () => {
       for (const p of CANONICAL_SEED.patients) {
         const adminId = p.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
         const adminDb = testEnv.authenticatedContext(adminId).firestore();
@@ -1344,9 +1334,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           ...p.entry.data
         }));
       }
-    });
 
-    it('ALLOW: org admins create canonical care-team entries and clinicians apply removals through real rules', async () => {
       for (const ct of CANONICAL_SEED.careTeams) {
         const adminId = ct.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
         const adminDb = testEnv.authenticatedContext(adminId).firestore();
@@ -1355,13 +1343,20 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         }));
       }
 
-      // Apply removals through active clinician
       for (const update of CANONICAL_SEED.careTeamUpdates) {
         const clinicianDb = testEnv.authenticatedContext('dr_smith').firestore();
         await assertSucceeds(updateDoc(doc(clinicianDb, `organizations/${update.orgId}/care_teams`, update.docId), {
           ...update.data
         }));
       }
+    }
+
+    beforeEach(async () => {
+      await loadCanonicalSeedThroughRules();
+    });
+
+    it('ALLOW: canonical seed loads verbatim through real rules', async () => {
+      // Verified in beforeEach via loadCanonicalSeedThroughRules() assertSucceeds calls
     });
 
     it('DENY: admin creates patient without orgName', async () => {
