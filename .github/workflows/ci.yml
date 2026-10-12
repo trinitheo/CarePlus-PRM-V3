@@ -1,0 +1,35 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Cache Firebase emulators
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
+      - name: Production bundle contains no dev or seed code
+        run: |
+          for s in "Sign in as" "Hand-maintained summary" "MRN-001" "CANONICAL_SEED"; do
+            if grep -rq "$s" dist/; then echo "::error::Found '$s' in dist/"; exit 1; fi
+          done
+      - name: Security rules tests (Firestore emulator)
+        run: npm test

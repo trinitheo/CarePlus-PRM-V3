@@ -72,4 +72,5 @@ clinician, nurse, patient, admin. No other roles until I ask for them.
 ## Git
 - Commit at the end of every approved task. Commit message must name the
   task.
+- A task is done only when CI is green on GitHub.
 - Never force-push. Never commit broken code.
