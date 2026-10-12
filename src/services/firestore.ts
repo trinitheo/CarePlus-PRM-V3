@@ -137,9 +137,9 @@ export async function getMyCareTeams(
 }
 
 export class FirestoreDataService implements DataService {
-  private db: Firestore;
+  private db: any;
 
-  constructor(db: Firestore) {
+  constructor(db: any) {
     this.db = db;
   }
 

@@ -7,9 +7,10 @@ service cloud.firestore {
     }
 
     function isPlatformOwner() {
-      return isAuthenticated() &&
-        ('platformOwner' in request.auth.token) &&
-        request.auth.token.platformOwner == true;
+      return isAuthenticated() && (
+        ('platformOwner' in request.auth && request.auth.platformOwner == true) ||
+        (request.auth.token is map && 'platformOwner' in request.auth.token && request.auth.token.platformOwner == true)
+      );
     }
 
     function getUserData() {
@@ -111,6 +112,7 @@ service cloud.firestore {
         // - mrn cannot be removed if already set
         allow update: if
           (!('id' in request.resource.data) || request.resource.data.id == patientId) &&
+          (('orgName' in resource.data) == ('orgName' in request.resource.data)) &&
           (!('orgName' in request.resource.data) || request.resource.data.orgName == resource.data.orgName) &&
           (!('mrn' in request.resource.data) || (request.resource.data.mrn is string && request.resource.data.mrn.size() > 0)) &&
           (!('firstName' in request.resource.data) || (request.resource.data.firstName is string && request.resource.data.firstName.size() > 0)) &&
@@ -221,9 +223,9 @@ service cloud.firestore {
       // Platform owner cannot read any user.
       allow get: if isAuthenticated() && !isPlatformOwner() && (
         request.auth.uid == userId ||
-        (resource.data.role != 'patient' &&
-         resource.data.orgId is string &&
-         isOrgStaff(resource.data.orgId)));
+        (('role' in resource.data && resource.data.role != 'patient') &&
+         ('orgId' in resource.data && resource.data.orgId is string &&
+          isOrgStaff(resource.data.orgId))));
 
       // list: staff may list users of their own organization only, using a query filtered on orgId.
       // Patient accounts are never listable.

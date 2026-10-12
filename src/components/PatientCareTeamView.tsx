@@ -59,7 +59,7 @@ export const PatientCareTeamView: React.FC<PatientCareTeamViewProps> = ({ curren
 
       {/* Error Banner */}
       {error && (
-        <div className={`p-4 rounded-xl border ${tokens.surfaces.error} ${tokens.borders.error} text-sm text-feedback-error-text`}>
+        <div className={`p-4 rounded-xl border ${tokens.status.danger} text-sm`}>
           {error}
         </div>
       )}

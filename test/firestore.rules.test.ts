@@ -21,7 +21,7 @@ import {
   where
 } from 'firebase/firestore';
 import { CANONICAL_SEED } from '../src/services/seed';
-import { getStaffPatients } from '../src/services/firestore';
+import { getStaffPatients, getMyCareTeams, FirestoreDataService } from '../src/services/firestore';
 
 const PROJECT_ID = 'careplus-v2-test';
 
@@ -102,6 +102,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           gender: 'female',
           email: 'alice@example.com',
           phone: '777-777-7777',
+          orgName: 'Clinic A',
           linkedUserId: 'patient_user_a',
           createdAt: '2026-01-01T00:00:00Z'
         });
@@ -115,6 +116,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           gender: 'male',
           email: 'bob@example.com',
           phone: '888-888-8888',
+          orgName: 'Clinic A',
           linkedUserId: 'patient_user_b',
           createdAt: '2026-01-02T00:00:00Z'
         });
@@ -128,6 +130,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           gender: 'female',
           email: 'dual@example.com',
           phone: '555-000-1111',
+          orgName: 'Clinic A',
           linkedUserId: 'dual_patient_user',
           createdAt: '2026-01-05T00:00:00Z'
         });
@@ -142,6 +145,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           gender: 'female',
           email: 'dual@example.com',
           phone: '555-000-1111',
+          orgName: 'Clinic B',
           linkedUserId: 'dual_patient_user',
           createdAt: '2026-01-06T00:00:00Z'
         });
@@ -155,6 +159,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           gender: 'other',
           email: 'chen@example.com',
           phone: '321-321-4321',
+          orgName: 'Clinic B',
           linkedUserId: 'dr_chen_personal',
           createdAt: '2026-01-07T00:00:00Z'
         });
@@ -168,6 +173,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           gender: 'male',
           email: 'other@example.com',
           phone: '999-888-7777',
+          orgName: 'Clinic B',
           linkedUserId: 'user_other_b',
           createdAt: '2026-01-08T00:00:00Z'
         });
@@ -280,6 +286,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         gender: 'other',
         email: 'new@example.com',
         phone: '123-456-7890',
+        orgName: 'Clinic A',
         linkedUserId: 'user_new',
         createdAt: '2026-03-01T00:00:00Z'
       }));
@@ -657,6 +664,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         gender: 'other',
         email: 'forged@example.com',
         phone: '111-111-1111',
+        orgName: 'Clinic A',
         linkedUserId: 'user_forged',
         createdAt: '2026-03-01T00:00:00Z'
       }));
@@ -959,6 +967,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         gender: 'female',
         email: 'nolink@example.com',
         phone: '555-444-3333',
+        orgName: 'Clinic A',
         createdAt: '2026-03-05T00:00:00Z'
       }));
     });
@@ -988,28 +997,32 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         id: 'patient_missing_mrn',
         firstName: 'Pending',
         lastName: 'Onboarding',
-        dob: '1995-04-12'
+        dob: '1995-04-12',
+        orgName: 'Clinic A'
       }));
       // Missing firstName
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_first'), {
         id: 'patient_missing_first',
         mrn: 'MRN-101',
         lastName: 'Onboarding',
-        dob: '1995-04-12'
+        dob: '1995-04-12',
+        orgName: 'Clinic A'
       }));
       // Missing lastName
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_last'), {
         id: 'patient_missing_last',
         mrn: 'MRN-102',
         firstName: 'Pending',
-        dob: '1995-04-12'
+        dob: '1995-04-12',
+        orgName: 'Clinic A'
       }));
       // Missing dob
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_dob'), {
         id: 'patient_missing_dob',
         mrn: 'MRN-103',
         firstName: 'Pending',
-        lastName: 'Onboarding'
+        lastName: 'Onboarding',
+        orgName: 'Clinic A'
       }));
       // Empty string mrn
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_mrn'), {
@@ -1017,7 +1030,8 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         mrn: '',
         firstName: 'Pending',
         lastName: 'Onboarding',
-        dob: '1995-04-12'
+        dob: '1995-04-12',
+        orgName: 'Clinic A'
       }));
       // Empty string firstName
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_first'), {
@@ -1025,7 +1039,8 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         mrn: 'MRN-104',
         firstName: '',
         lastName: 'Onboarding',
-        dob: '1995-04-12'
+        dob: '1995-04-12',
+        orgName: 'Clinic A'
       }));
       // Empty string lastName
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_last'), {
@@ -1033,7 +1048,8 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         mrn: 'MRN-105',
         firstName: 'Pending',
         lastName: '',
-        dob: '1995-04-12'
+        dob: '1995-04-12',
+        orgName: 'Clinic A'
       }));
     });
 
@@ -1083,8 +1099,11 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_path_id'), {
         id: 'different_id_field',
+        mrn: 'MRN-PATH-1',
         firstName: 'Mismatch',
         lastName: 'Patient',
+        dob: '1990-01-01',
+        orgName: 'Clinic A',
         createdAt: '2026-03-05T00:00:00Z'
       }));
     });
@@ -1107,8 +1126,11 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
       await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_escalate_attempt'), {
         id: 'patient_escalate_attempt',
+        mrn: 'MRN-ESC-1',
         firstName: 'Escalation',
         lastName: 'Attempt',
+        dob: '1990-01-01',
+        orgName: 'Clinic A',
         linkedUserId: 'admin_1',
         createdAt: '2026-03-05T00:00:00Z'
       }));
@@ -1273,129 +1295,121 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     });
   });
 
-  describe('Task 2: Canonical Seed Validation & Clinician/Nurse Panel Queries', () => {
-    it('ALLOW: admin can create all canonical seed users through real rules', async () => {
-      const db = testEnv.authenticatedContext('admin_1').firestore();
+  describe('Task 3: Canonical Seed Validation & Multi-Org Patient Care Team View', () => {
+    it('ALLOW: platform owner creates all canonical organizations through real rules', async () => {
+      await testEnv.clearFirestore();
+      const ownerDb = testEnv.authenticatedContext('platform_owner', { platformOwner: true }).firestore();
 
-      // Seed staff users: dr_smith, dr_jones, dr_unassigned, nurse_amy
-      // Keys allowed on staff create: ['displayName', 'email', 'phone', 'role', 'orgId']
-      const staffUsers = CANONICAL_SEED.users.filter((u) => u.uid !== 'admin_1');
-      for (const user of staffUsers) {
-        await assertSucceeds(setDoc(doc(db, 'users', `new_seed_${user.uid}`), {
-          displayName: user.displayName,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          orgId: 'clinic_a'
+      for (const org of CANONICAL_SEED.organizations) {
+        await assertSucceeds(setDoc(doc(ownerDb, 'organizations', org.id), {
+          ...org.data
         }));
       }
     });
 
-    it('ALLOW: admin can create all canonical seed patients through real rules', async () => {
-      const db = testEnv.authenticatedContext('admin_1').firestore();
+    it('ALLOW: platform owner creates first admins for all canonical organizations through real rules', async () => {
+      const ownerDb = testEnv.authenticatedContext('platform_owner', { platformOwner: true }).firestore();
 
+      for (const admin of CANONICAL_SEED.firstAdmins) {
+        await assertSucceeds(setDoc(doc(ownerDb, 'users', admin.id), {
+          ...admin.data
+        }));
+      }
+    });
+
+    it('ALLOW: org admins create canonical staff users through real rules', async () => {
+      for (const staff of CANONICAL_SEED.staffUsers) {
+        const adminId = staff.data.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
+        const adminDb = testEnv.authenticatedContext(adminId).firestore();
+        await assertSucceeds(setDoc(doc(adminDb, 'users', staff.id), {
+          ...staff.data
+        }));
+      }
+    });
+
+    it('ALLOW: admins create canonical patient users through real rules', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      for (const patientUser of CANONICAL_SEED.patientUsers) {
+        await assertSucceeds(setDoc(doc(adminDb, 'users', patientUser.id), {
+          ...patientUser.data
+        }));
+      }
+    });
+
+    it('ALLOW: org admins create canonical patients through real rules', async () => {
       for (const p of CANONICAL_SEED.patients) {
-        await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients', `new_${p.id}`), {
-          id: `new_${p.id}`,
-          mrn: `VAL-${p.mrn}`,
-          firstName: p.firstName,
-          lastName: p.lastName,
-          dob: p.dob,
-          gender: p.gender,
-          email: p.email,
-          phone: p.phone,
-          createdAt: p.createdAt
+        const adminId = p.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
+        const adminDb = testEnv.authenticatedContext(adminId).firestore();
+        await assertSucceeds(setDoc(doc(adminDb, `organizations/${p.orgId}/patients`, p.entry.id), {
+          ...p.entry.data
         }));
       }
     });
 
-    it('ALLOW: admin can create all canonical seed active care-team entries through real rules', async () => {
-      const db = testEnv.authenticatedContext('admin_1').firestore();
+    it('ALLOW: org admins create canonical care-team entries and clinicians apply removals through real rules', async () => {
+      for (const ct of CANONICAL_SEED.careTeams) {
+        const adminId = ct.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
+        const adminDb = testEnv.authenticatedContext(adminId).firestore();
+        await assertSucceeds(setDoc(doc(adminDb, `organizations/${ct.orgId}/care_teams`, ct.entry.id), {
+          ...ct.entry.data
+        }));
+      }
 
-      // First create target patient to test against
-      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients', 'patient_test_ct'), {
-        id: 'patient_test_ct',
-        mrn: 'MRN-VAL-CT',
-        firstName: 'Val',
-        lastName: 'CareTeam',
-        dob: '1980-01-01',
+      // Apply removals through active clinician
+      for (const update of CANONICAL_SEED.careTeamUpdates) {
+        const clinicianDb = testEnv.authenticatedContext('dr_smith').firestore();
+        await assertSucceeds(updateDoc(doc(clinicianDb, `organizations/${update.orgId}/care_teams`, update.docId), {
+          ...update.data
+        }));
+      }
+    });
+
+    it('DENY: admin creates patient without orgName', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_orgname'), {
+        id: 'patient_missing_orgname',
+        mrn: 'MRN-NO-ORGNAME',
+        firstName: 'No',
+        lastName: 'OrgName',
+        dob: '1990-01-01',
         gender: 'female',
-        email: 'val@example.com',
+        email: 'no_orgname@example.com',
         phone: '123-456-7890',
-        createdAt: '2026-01-01T00:00:00Z'
+        createdAt: '2026-03-01T00:00:00Z'
       }));
-
-      // Active care team entries per seed
-      const activeEntries = CANONICAL_SEED.careTeams.filter((ct) => ct.status === 'active');
-      for (const ct of activeEntries) {
-        // Look up userDoc in db to ensure matching displayName
-        const userDoc = await getDoc(doc(db, 'users', ct.userId));
-        const displayName = userDoc.data()?.displayName || 'Staff';
-
-        await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/care_teams', `patient_test_ct_${ct.userId}`), {
-          patientId: 'patient_test_ct',
-          userId: ct.userId,
-          displayName,
-          role: ct.role,
-          status: 'active',
-          createdAt: ct.joinedAt || '2026-01-02T01:00:00Z'
-        }));
-      }
     });
 
-    it('ALLOW: admin creates and removes nurse_amy on patient_C care-team (status: removed)', async () => {
-      const db = testEnv.authenticatedContext('admin_1').firestore();
-      // Ensure patient_C exists
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        await setDoc(doc(context.firestore(), 'organizations/clinic_a/patients/patient_C'), {
-          id: 'patient_C',
-          mrn: 'MRN-003',
-          firstName: 'Carol',
-          lastName: 'White',
-          dob: '1992-08-30',
-          gender: 'female',
-          email: 'carol@example.com',
-          phone: '+15550100003',
-          createdAt: '2026-01-02T00:00:00Z'
-        });
-      });
-
-      const userDoc = await getDoc(doc(db, 'users', 'nurse_amy'));
-      const displayName = userDoc.data()?.displayName || 'Nurse Amy';
-
-      // Create as active first (per care team create rule status must be active and doc id == patientId + '_' + userId)
-      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/care_teams', 'patient_C_nurse_amy'), {
-        patientId: 'patient_C',
-        userId: 'nurse_amy',
-        displayName,
-        role: 'nurse',
-        status: 'active',
-        createdAt: '2026-01-02T01:00:00Z'
+    it('DENY: admin creates patient with mismatched orgName', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_mismatch_orgname'), {
+        id: 'patient_mismatch_orgname',
+        mrn: 'MRN-MISMATCH-ORGNAME',
+        firstName: 'Mismatch',
+        lastName: 'OrgName',
+        dob: '1990-01-01',
+        gender: 'female',
+        email: 'mismatch_orgname@example.com',
+        phone: '123-456-7890',
+        orgName: 'Wrong Clinic Name',
+        createdAt: '2026-03-01T00:00:00Z'
       }));
+    });
 
-      // Update to status: 'removed'
-      await assertSucceeds(updateDoc(doc(db, 'organizations/clinic_a/care_teams', 'patient_C_nurse_amy'), {
-        status: 'removed',
-        removedAt: '2026-01-15T00:00:00Z'
+    it('DENY: admin updates patient to change orgName (immutable)', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        orgName: 'Tampered Clinic Name'
+      }));
+    });
+
+    it('DENY: admin updates patient to remove orgName (immutable)', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
+        orgName: deleteField()
       }));
     });
 
     it('ALLOW: dr_smith runs real getStaffPatients() and sees exactly their active assigned patients', async () => {
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const adminDb = context.firestore();
-        for (const p of CANONICAL_SEED.patients) {
-          await setDoc(doc(adminDb, 'organizations/clinic_a/patients', p.id), { ...p });
-        }
-        for (const ct of CANONICAL_SEED.careTeams) {
-          const userDoc = await getDoc(doc(adminDb, 'users', ct.userId));
-          const displayName = userDoc.data()?.displayName || 'Staff';
-          await setDoc(doc(adminDb, 'organizations/clinic_a/care_teams', `${ct.patientId}_${ct.userId}`), {
-            ...ct,
-            displayName
-          });
-        }
-      });
-
       const db = testEnv.authenticatedContext('dr_smith').firestore();
       const results = await getStaffPatients(db, 'clinic_a', 'dr_smith');
 
@@ -1413,23 +1427,6 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     });
 
     it('ALLOW: dr_jones runs real getStaffPatients() and sees exactly their 2 active assigned patients', async () => {
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const adminDb = context.firestore();
-        // Remove patient_B_dr_jones from outer beforeEach so dr_jones has canonical assignments only
-        await deleteDoc(doc(adminDb, 'organizations/clinic_a/care_teams/patient_B_dr_jones'));
-        for (const p of CANONICAL_SEED.patients) {
-          await setDoc(doc(adminDb, 'organizations/clinic_a/patients', p.id), { ...p });
-        }
-        for (const ct of CANONICAL_SEED.careTeams) {
-          const userDoc = await getDoc(doc(adminDb, 'users', ct.userId));
-          const displayName = userDoc.data()?.displayName || 'Staff';
-          await setDoc(doc(adminDb, 'organizations/clinic_a/care_teams', `${ct.patientId}_${ct.userId}`), {
-            ...ct,
-            displayName
-          });
-        }
-      });
-
       const db = testEnv.authenticatedContext('dr_jones').firestore();
       const results = await getStaffPatients(db, 'clinic_a', 'dr_jones');
 
@@ -1447,33 +1444,15 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     });
 
     it('ALLOW: nurse_amy runs real getStaffPatients() and sees only active patients (patient_C excluded entirely)', async () => {
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const adminDb = context.firestore();
-        for (const p of CANONICAL_SEED.patients) {
-          await setDoc(doc(adminDb, 'organizations/clinic_a/patients', p.id), { ...p });
-        }
-        for (const ct of CANONICAL_SEED.careTeams) {
-          const userDoc = await getDoc(doc(adminDb, 'users', ct.userId));
-          const displayName = userDoc.data()?.displayName || 'Staff';
-          await setDoc(doc(adminDb, 'organizations/clinic_a/care_teams', `${ct.patientId}_${ct.userId}`), {
-            ...ct,
-            displayName
-          });
-        }
-      });
-
       const db = testEnv.authenticatedContext('nurse_amy').firestore();
       const results = await getStaffPatients(db, 'clinic_a', 'nurse_amy');
 
-      // nurse_amy has active assignments on patient_A and patient_B, and 'removed' on patient_C
-      // patient_C must not appear at all, neither as fulfilled nor as rejected
       assert.strictEqual(results.length, 2);
       assert.strictEqual(results.every((r) => r.status === 'fulfilled'), true);
 
       const patientIds = results.map((r) => r.status === 'fulfilled' ? r.value.patient.id : null).sort();
       assert.deepStrictEqual(patientIds, ['patient_A', 'patient_B']);
 
-      // Double check patient_C is nowhere in results
       const containsPatientC = results.some((r) =>
         (r.status === 'fulfilled' && r.value.patient.id === 'patient_C') ||
         (r.status === 'rejected' && r.patientId === 'patient_C')
@@ -1492,11 +1471,76 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     it('DENY: dr_unassigned attempting direct get on any patient chart is denied', async () => {
       const db = testEnv.authenticatedContext('dr_unassigned').firestore();
 
-      // dr_unassigned is in clinic_a but on no care teams
       await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_A')));
       await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_B')));
       await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_C')));
       await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_D')));
+    });
+
+    it('ALLOW: dr_clinic_b panel query returns Alice’s Clinic B record using staff orgId', async () => {
+      const db = testEnv.authenticatedContext('dr_clinic_b').firestore();
+      const results = await getStaffPatients(db, 'clinic_b', 'dr_clinic_b');
+
+      assert.strictEqual(results.length, 1);
+      assert.strictEqual(results[0].status, 'fulfilled');
+      if (results[0].status === 'fulfilled') {
+        assert.strictEqual(results[0].value.patient.id, 'patient_alice_b');
+        assert.strictEqual(results[0].value.patient.mrn, 'MRN-B-001');
+        assert.strictEqual(results[0].value.patient.orgName, 'CarePlus West');
+      }
+    });
+
+    it('ALLOW: getMyCareTeams returns active care teams for Alice across Clinic A and Clinic B, excluding removed members', async () => {
+      const db = testEnv.authenticatedContext('alice').firestore();
+      const careTeams = await getMyCareTeams(db, 'alice');
+
+      assert.strictEqual(careTeams.length, 2);
+
+      const clinicATeam = careTeams.find((ct) => ct.orgId === 'clinic_a');
+      assert.ok(clinicATeam);
+      assert.strictEqual(clinicATeam.orgName, 'CarePlus Clinic');
+      assert.strictEqual(clinicATeam.patientId, 'patient_A');
+      // Dr. Smith and Nurse Amy active; dr_removed is status: removed and must not appear
+      assert.strictEqual(clinicATeam.members.length, 2);
+      const memberUids = clinicATeam.members.map((m) => m.userId).sort();
+      assert.deepStrictEqual(memberUids, ['dr_smith', 'nurse_amy']);
+
+      const clinicBTeam = careTeams.find((ct) => ct.orgId === 'clinic_b');
+      assert.ok(clinicBTeam);
+      assert.strictEqual(clinicBTeam.orgName, 'CarePlus West');
+      assert.strictEqual(clinicBTeam.patientId, 'patient_alice_b');
+      assert.strictEqual(clinicBTeam.members.length, 1);
+      assert.strictEqual(clinicBTeam.members[0].userId, 'dr_clinic_b');
+      assert.strictEqual(clinicBTeam.members[0].role, 'clinician');
+    });
+
+    it('DENY: Alice cannot read patient_B chart or list patient_B care team', async () => {
+      const db = testEnv.authenticatedContext('alice').firestore();
+
+      // Direct chart access to patient_B
+      await assertFails(getDoc(doc(db, 'organizations/clinic_a/patients/patient_B')));
+
+      // Direct care team read on patient_B
+      await assertFails(getDoc(doc(db, 'organizations/clinic_a/care_teams/patient_B_dr_smith')));
+      await assertFails(getDocs(query(collection(db, 'organizations/clinic_a/care_teams'), where('patientId', '==', 'patient_B'))));
+    });
+
+    it('ALLOW: getUser returns the correct user from /users/{uid}', async () => {
+      const aliceDb = testEnv.authenticatedContext('alice').firestore();
+      const serviceAlice = new FirestoreDataService(aliceDb);
+      const user = await serviceAlice.getUser('alice');
+      assert.ok(user);
+      assert.strictEqual(user.uid, 'alice');
+      assert.strictEqual(user.displayName, 'Alice Smith');
+      assert.strictEqual(user.role, 'patient');
+
+      const smithDb = testEnv.authenticatedContext('dr_smith').firestore();
+      const serviceSmith = new FirestoreDataService(smithDb);
+      const staff = await serviceSmith.getUser('dr_jones');
+      assert.ok(staff);
+      assert.strictEqual(staff.uid, 'dr_jones');
+      assert.strictEqual(staff.displayName, 'Dr. Michael Jones');
+      assert.strictEqual(staff.role, 'clinician');
     });
   });
 });
