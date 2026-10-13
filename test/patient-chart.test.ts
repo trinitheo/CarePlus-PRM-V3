@@ -278,20 +278,10 @@ describe('Task 7b: Patient Chart View & Data Service Integration', () => {
 
   it('a removed team member and an unassigned clinician are denied', async () => {
     const drRemovedDb = testEnv.authenticatedContext('dr_removed').firestore();
-    await assert.rejects(
-      getPatientChart(drRemovedDb, 'clinic_a', 'patient_A', 'dr_removed'),
-      (err: any) => {
-        return err.message.includes('permission') || err.message.includes('PERMISSION_DENIED') || err.code === 7;
-      }
-    );
+    await assertFails(getPatientChart(drRemovedDb, 'clinic_a', 'patient_A', 'dr_removed'));
 
     const drUnassignedDb = testEnv.authenticatedContext('dr_unassigned').firestore();
-    await assert.rejects(
-      getPatientChart(drUnassignedDb, 'clinic_a', 'patient_A', 'dr_unassigned'),
-      (err: any) => {
-        return err.message.includes('permission') || err.message.includes('PERMISSION_DENIED') || err.code === 7;
-      }
-    );
+    await assertFails(getPatientChart(drUnassignedDb, 'clinic_a', 'patient_A', 'dr_unassigned'));
   });
 
   it('mock getPatientChart works for any seed patient and applies the same care-team check', async () => {
