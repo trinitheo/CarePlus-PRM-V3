@@ -3,6 +3,8 @@
  * Only 4 roles permitted in v1: clinician, nurse, patient, admin
  */
 
+import type { Timestamp } from 'firebase/firestore';
+
 export type UserRole = 'clinician' | 'nurse' | 'patient' | 'admin';
 
 export interface UserRecord {
@@ -61,7 +63,9 @@ export interface ClinicalNote {
   patientId?: string;
   authorId: string;
   body: string;
-  createdAt: string;
+  status: 'draft' | 'final';
+  createdAt: Timestamp;
+  finalisedAt?: Timestamp;
   correctsId?: string;
 }
 

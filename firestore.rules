@@ -130,12 +130,19 @@ service cloud.firestore {
         allow delete: if false;
 
         match /notes/{noteId} {
-          allow read: if !isPlatformOwner() && (isActiveCareTeamMember(orgId, patientId) || isLinkedPatient(orgId, patientId));
+          allow read: if !isPlatformOwner() && (
+            (isActiveCareTeamMember(orgId, patientId) &&
+             (resource.data.status == 'final' ||
+              (resource.data.authorId == request.auth.uid && resource.data.status == 'draft'))) ||
+            (isLinkedPatient(orgId, patientId) && resource.data.status == 'final')
+          );
+
           allow create: if !isPlatformOwner() &&
                         isActiveCareTeamMember(orgId, patientId) &&
-                        request.resource.data.keys().hasAll(['authorId', 'body', 'createdAt']) &&
-                        request.resource.data.keys().hasOnly(['authorId', 'body', 'createdAt', 'correctsId']) &&
+                        request.resource.data.keys().hasAll(['authorId', 'body', 'status', 'createdAt']) &&
+                        request.resource.data.keys().hasOnly(['authorId', 'body', 'status', 'createdAt', 'correctsId']) &&
                         request.resource.data.authorId == request.auth.uid &&
+                        request.resource.data.status == 'draft' &&
                         request.resource.data.body is string &&
                         request.resource.data.body.size() >= 1 &&
                         request.resource.data.body.size() <= 20000 &&
@@ -143,9 +150,28 @@ service cloud.firestore {
                         (!('correctsId' in request.resource.data) ||
                          (request.resource.data.correctsId is string &&
                           exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/notes/$(request.resource.data.correctsId)) &&
-                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/notes/$(request.resource.data.correctsId)).data.authorId == request.auth.uid));
-          allow update: if false;
-          allow delete: if false;
+                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/notes/$(request.resource.data.correctsId)).data.authorId == request.auth.uid &&
+                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/notes/$(request.resource.data.correctsId)).data.status == 'final'));
+
+          allow update: if !isPlatformOwner() &&
+                        isActiveCareTeamMember(orgId, patientId) &&
+                        resource.data.authorId == request.auth.uid &&
+                        resource.data.status == 'draft' &&
+                        (
+                          (request.resource.data.status == 'draft' &&
+                           request.resource.data.body is string &&
+                           request.resource.data.body.size() >= 1 &&
+                           request.resource.data.body.size() <= 20000 &&
+                           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body'])) ||
+                          (request.resource.data.status == 'final' &&
+                           request.resource.data.finalisedAt == request.time &&
+                           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'finalisedAt']))
+                        );
+
+          allow delete: if !isPlatformOwner() &&
+                        isActiveCareTeamMember(orgId, patientId) &&
+                        resource.data.authorId == request.auth.uid &&
+                        resource.data.status == 'draft';
         }
 
         match /vitals/{vitalId} {
@@ -206,7 +232,9 @@ service cloud.firestore {
                         (!('correctsId' in request.resource.data) ||
                          (request.resource.data.correctsId is string &&
                           exists(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)) &&
-                          get(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)).data.authorId == request.auth.uid));
+                          getAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)).data.status == 'discontinued' &&
+                          getAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)).data.discontinuedBy == request.auth.uid &&
+                          getAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(patientId)/prescriptions/$(request.resource.data.correctsId)).data.discontinuedAt == request.time));
           allow update: if !isPlatformOwner() &&
                            isActiveClinicianOnTeam(orgId, patientId) &&
                            resource.data.status == 'active' &&

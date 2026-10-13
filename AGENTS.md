@@ -33,6 +33,7 @@ clinician, nurse, patient, admin. No other roles until I ask for them.
   Before any patient file is created, existing patients are searched by name
   and date of birth, and a match is reused.
 - Only admin creates patient files.
+- Patients see only finalised clinical notes. A note is finalised (signed) by its author and can never change afterwards.
 - No component imports from firebase/firestore or firebase/auth. All data
   access goes through src/services/.
 - In development the app runs in mock mode by default: in-memory demo data

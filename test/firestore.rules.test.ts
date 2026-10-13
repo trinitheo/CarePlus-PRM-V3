@@ -20,7 +20,8 @@ import {
   query,
   where,
   serverTimestamp,
-  Timestamp
+  Timestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { CANONICAL_SEED } from '../src/services/seed';
 import { getStaffPatients, getMyCareTeams, FirestoreDataService } from '../src/services/firestore';
@@ -240,11 +241,14 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
           authorId: 'dr_smith',
           body: 'Initial assessment',
-          createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
+          status: 'final',
+          createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z')),
+          finalisedAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_removed_clinician'), {
           authorId: 'dr_removed',
           body: 'Old note from removed clinician',
+          status: 'draft',
           createdAt: Timestamp.fromDate(new Date('2026-01-05T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/vitals/vital_1'), {
@@ -263,17 +267,32 @@ describe('CarePlus v2 Firestore Security Rules', () => {
           status: 'active',
           createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
         });
+        await setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_discontinued_earlier'), {
+          authorId: 'dr_smith',
+          medication: 'Amoxicillin 500mg',
+          dose: '500mg',
+          route: 'PO',
+          frequency: 'TID x 10d',
+          status: 'discontinued',
+          discontinuedBy: 'dr_smith',
+          discontinuedAt: Timestamp.fromDate(new Date('2026-01-11T00:00:00Z')),
+          createdAt: Timestamp.fromDate(new Date('2026-01-10T00:00:00Z'))
+        });
 
         // Clinical records on Clinic B patients
         await setDoc(doc(db, 'organizations/clinic_b/patients/patient_chen_b/notes/note_chen_1'), {
           authorId: 'dr_clinic_b',
           body: 'Note for Chen at Clinic B',
-          createdAt: Timestamp.fromDate(new Date('2026-01-11T00:00:00Z'))
+          status: 'final',
+          createdAt: Timestamp.fromDate(new Date('2026-01-11T00:00:00Z')),
+          finalisedAt: Timestamp.fromDate(new Date('2026-01-11T00:00:00Z'))
         });
         await setDoc(doc(db, 'organizations/clinic_b/patients/patient_b_other/notes/note_other_1'), {
           authorId: 'dr_clinic_b',
           body: 'Note for other patient at Clinic B',
-          createdAt: Timestamp.fromDate(new Date('2026-01-12T00:00:00Z'))
+          status: 'final',
+          createdAt: Timestamp.fromDate(new Date('2026-01-12T00:00:00Z')),
+          finalisedAt: Timestamp.fromDate(new Date('2026-01-12T00:00:00Z'))
         });
       });
     }
@@ -365,6 +384,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_2'), {
         authorId: 'dr_smith',
         body: 'Follow-up exam note',
+        status: 'draft',
         createdAt: serverTimestamp()
       }));
     });
@@ -437,7 +457,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     it('DENY: removed care team member updating a note they authored', async () => {
       const db = testEnv.authenticatedContext('dr_removed').firestore();
       await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_removed_clinician'), {
-        content: 'Should fail'
+        body: 'Should fail'
       }));
     });
 
@@ -501,6 +521,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_fake'), {
         authorId: 'dr_jones',
         body: 'Forged note',
+        status: 'draft',
         createdAt: serverTimestamp()
       }));
     });
@@ -774,6 +795,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(personalDb, 'organizations/clinic_b/patients/patient_chen_b/notes/note_fail'), {
         authorId: 'dr_chen_personal',
         body: 'Patient writing note',
+        status: 'draft',
         createdAt: serverTimestamp()
       }));
       await assertFails(setDoc(doc(personalDb, 'organizations/clinic_b/patients/patient_chen_b/prescriptions/rx_fail'), {
@@ -1194,6 +1216,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_owner'), {
         authorId: 'platform_owner_uid',
         body: 'Unauthorized owner note',
+        status: 'draft',
         createdAt: serverTimestamp()
       }));
       await assertFails(updateDoc(doc(ownerDb, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
@@ -1580,6 +1603,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_unk'), {
         authorId: 'dr_smith',
         body: 'Valid body',
+        status: 'draft',
         createdAt: serverTimestamp(),
         unknownField: 'bad'
       }));
@@ -1590,6 +1614,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_client_ts'), {
         authorId: 'dr_smith',
         body: 'Valid body',
+        status: 'draft',
         createdAt: '2026-03-01T00:00:00Z'
       }));
     });
@@ -1860,6 +1885,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_wrong_author'), {
         authorId: 'nurse_amy',
         body: 'Correcting dr smith note',
+        status: 'draft',
         createdAt: serverTimestamp(),
         correctsId: 'note_smith'
       }));
@@ -1870,6 +1896,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_nonexist'), {
         authorId: 'dr_smith',
         body: 'Correcting non-existent note',
+        status: 'draft',
         createdAt: serverTimestamp(),
         correctsId: 'non_existent_note_999'
       }));
@@ -1907,6 +1934,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_ok'), {
         authorId: 'dr_smith',
         body: 'Corrected note body',
+        status: 'draft',
         createdAt: serverTimestamp(),
         correctsId: 'note_smith'
       }));
@@ -1958,6 +1986,236 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         status: 'discontinued',
         discontinuedAt: serverTimestamp(),
         discontinuedBy: 'dr_brown'
+      }));
+    });
+
+    it('ALLOW: a batch that discontinues prescription X and creates its correction with correctsId: X', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const batch = writeBatch(db);
+      const origRef = doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1');
+      const corrRef = doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1_corr');
+
+      batch.update(origRef, {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'dr_smith'
+      });
+
+      batch.set(corrRef, {
+        authorId: 'dr_smith',
+        medication: 'Amoxicillin 250mg',
+        dose: '250mg',
+        route: 'PO',
+        frequency: 'TID x 10d',
+        status: 'active',
+        createdAt: serverTimestamp(),
+        correctsId: 'rx_1'
+      });
+
+      await assertSucceeds(batch.commit());
+    });
+
+    it('DENY: a correction of an active prescription, created without discontinuing the original', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const corrRef = doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1_corr_alone');
+
+      await assertFails(setDoc(corrRef, {
+        authorId: 'dr_smith',
+        medication: 'Amoxicillin 250mg',
+        dose: '250mg',
+        route: 'PO',
+        frequency: 'TID x 10d',
+        status: 'active',
+        createdAt: serverTimestamp(),
+        correctsId: 'rx_1'
+      }));
+    });
+
+    it('ALLOW: a different clinician’s batch discontinues Dr A’s prescription and creates its correction', async () => {
+      const db = testEnv.authenticatedContext('dr_brown').firestore();
+      const batch = writeBatch(db);
+      const origRef = doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1');
+      const corrRef = doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_1_corr_by_brown');
+
+      batch.update(origRef, {
+        status: 'discontinued',
+        discontinuedAt: serverTimestamp(),
+        discontinuedBy: 'dr_brown'
+      });
+
+      batch.set(corrRef, {
+        authorId: 'dr_brown',
+        medication: 'Amoxicillin 250mg',
+        dose: '250mg',
+        route: 'PO',
+        frequency: 'TID x 10d',
+        status: 'active',
+        createdAt: serverTimestamp(),
+        correctsId: 'rx_1'
+      });
+
+      await assertSucceeds(batch.commit());
+    });
+
+    it('DENY: a correction pointing at a prescription that was discontinued earlier, outside this batch', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const corrRef = doc(db, 'organizations/clinic_a/patients/patient_A/prescriptions/rx_corr_earlier');
+
+      await assertFails(setDoc(corrRef, {
+        authorId: 'dr_smith',
+        medication: 'Amoxicillin 250mg',
+        dose: '250mg',
+        route: 'PO',
+        frequency: 'TID x 10d',
+        status: 'active',
+        createdAt: serverTimestamp(),
+        correctsId: 'rx_discontinued_earlier'
+      }));
+    });
+  });
+
+  describe('Task 6b: Finalised Notes', () => {
+    it('ALLOW: author edits own draft', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const draftRef = doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_draft_edit');
+      await assertSucceeds(setDoc(draftRef, {
+        authorId: 'dr_smith',
+        body: 'Original draft body',
+        status: 'draft',
+        createdAt: serverTimestamp()
+      }));
+      await assertSucceeds(updateDoc(draftRef, {
+        body: 'Updated draft body'
+      }));
+    });
+
+    it('DENY: another team member reads someone’s draft', async () => {
+      const dbSmith = testEnv.authenticatedContext('dr_smith').firestore();
+      const draftRef = doc(dbSmith, 'organizations/clinic_a/patients/patient_A/notes/note_smith_draft');
+      await assertSucceeds(setDoc(draftRef, {
+        authorId: 'dr_smith',
+        body: 'Smith private draft',
+        status: 'draft',
+        createdAt: serverTimestamp()
+      }));
+      const dbAmy = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(getDoc(doc(dbAmy, 'organizations/clinic_a/patients/patient_A/notes/note_smith_draft')));
+    });
+
+    it('DENY: patient reads a draft', async () => {
+      const dbPatient = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertFails(getDoc(doc(dbPatient, 'organizations/clinic_a/patients/patient_A/notes/note_removed_clinician')));
+    });
+
+    it('ALLOW: patient reads a final note', async () => {
+      const dbPatient = testEnv.authenticatedContext('patient_user_a').firestore();
+      await assertSucceeds(getDoc(doc(dbPatient, 'organizations/clinic_a/patients/patient_A/notes/note_smith')));
+    });
+
+    it('ALLOW: patient lists notes filtered to status == \'final\'', async () => {
+      const dbPatient = testEnv.authenticatedContext('patient_user_a').firestore();
+      const notesCol = collection(dbPatient, 'organizations/clinic_a/patients/patient_A/notes');
+      const q = query(notesCol, where('status', '==', 'final'));
+      await assertSucceeds(getDocs(q));
+    });
+
+    it('DENY: patient lists notes unfiltered', async () => {
+      const dbPatient = testEnv.authenticatedContext('patient_user_a').firestore();
+      const notesCol = collection(dbPatient, 'organizations/clinic_a/patients/patient_A/notes');
+      await assertFails(getDocs(notesCol));
+    });
+
+    it('ALLOW: a care-team member lists notes with where(\'status\', \'==\', \'final\')', async () => {
+      const dbAmy = testEnv.authenticatedContext('nurse_amy').firestore();
+      const notesCol = collection(dbAmy, 'organizations/clinic_a/patients/patient_A/notes');
+      const q = query(notesCol, where('status', '==', 'final'));
+      await assertSucceeds(getDocs(q));
+    });
+
+    it('ALLOW: a care-team member lists their own drafts with where(\'authorId\', \'==\', uid) and where(\'status\', \'==\', \'draft\')', async () => {
+      const dbSmith = testEnv.authenticatedContext('dr_smith').firestore();
+      const notesCol = collection(dbSmith, 'organizations/clinic_a/patients/patient_A/notes');
+      const q = query(notesCol, where('authorId', '==', 'dr_smith'), where('status', '==', 'draft'));
+      await assertSucceeds(getDocs(q));
+    });
+
+    it('DENY: a care-team member lists notes unfiltered', async () => {
+      const dbSmith = testEnv.authenticatedContext('dr_smith').firestore();
+      const notesCol = collection(dbSmith, 'organizations/clinic_a/patients/patient_A/notes');
+      await assertFails(getDocs(notesCol));
+    });
+
+    it('ALLOW: finalise by author', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const noteRef = doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_to_finalise');
+      await assertSucceeds(setDoc(noteRef, {
+        authorId: 'dr_smith',
+        body: 'Draft before finalisation',
+        status: 'draft',
+        createdAt: serverTimestamp()
+      }));
+      await assertSucceeds(updateDoc(noteRef, {
+        status: 'final',
+        finalisedAt: serverTimestamp()
+      }));
+    });
+
+    it('DENY: finalise by someone else', async () => {
+      const dbSmith = testEnv.authenticatedContext('dr_smith').firestore();
+      const noteRef = doc(dbSmith, 'organizations/clinic_a/patients/patient_A/notes/note_to_finalise_by_other');
+      await assertSucceeds(setDoc(noteRef, {
+        authorId: 'dr_smith',
+        body: 'Smith draft note',
+        status: 'draft',
+        createdAt: serverTimestamp()
+      }));
+      const dbAmy = testEnv.authenticatedContext('nurse_amy').firestore();
+      await assertFails(updateDoc(doc(dbAmy, 'organizations/clinic_a/patients/patient_A/notes/note_to_finalise_by_other'), {
+        status: 'final',
+        finalisedAt: serverTimestamp()
+      }));
+    });
+
+    it('DENY: edit after final', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(updateDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith'), {
+        body: 'Attempt to edit already finalised note'
+      }));
+    });
+
+    it('ALLOW: delete own draft', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const noteRef = doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_to_delete');
+      await assertSucceeds(setDoc(noteRef, {
+        authorId: 'dr_smith',
+        body: 'Draft to be deleted',
+        status: 'draft',
+        createdAt: serverTimestamp()
+      }));
+      await assertSucceeds(deleteDoc(noteRef));
+    });
+
+    it('DENY: delete a final note', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      await assertFails(deleteDoc(doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_smith')));
+    });
+
+    it('DENY: correction pointing at a draft', async () => {
+      const db = testEnv.authenticatedContext('dr_smith').firestore();
+      const draftRef = doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_draft_target');
+      await assertSucceeds(setDoc(draftRef, {
+        authorId: 'dr_smith',
+        body: 'A draft note',
+        status: 'draft',
+        createdAt: serverTimestamp()
+      }));
+      const corrRef = doc(db, 'organizations/clinic_a/patients/patient_A/notes/note_corr_to_draft');
+      await assertFails(setDoc(corrRef, {
+        authorId: 'dr_smith',
+        body: 'Correction targeting draft',
+        status: 'draft',
+        createdAt: serverTimestamp(),
+        correctsId: 'note_draft_target'
       }));
     });
   });
