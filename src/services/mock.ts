@@ -1,5 +1,13 @@
-import type { PatientRecord, UserRecord, CareTeamMemberRecord, PatientOrgCareTeam } from '../types';
-import type { DataService, PatientLoadResult, StaffPatientRow } from './types';
+import type {
+  PatientRecord,
+  UserRecord,
+  CareTeamMemberRecord,
+  PatientOrgCareTeam,
+  ClinicalNote,
+  VitalRecord,
+  PrescriptionRecord
+} from '../types';
+import type { DataService, PatientLoadResult, StaffPatientRow, PatientChartData } from './types';
 import type { SessionService, SessionState } from './session';
 import { CANONICAL_SEED } from './seed';
 
@@ -7,11 +15,17 @@ export class MockDataService implements DataService {
   private users: Map<string, UserRecord>;
   private patients: Map<string, { orgId: string; patient: PatientRecord }>;
   private careTeams: { orgId: string; record: CareTeamMemberRecord }[];
+  private vitals: { orgId: string; patientId: string; record: VitalRecord }[];
+  private notes: { orgId: string; patientId: string; record: ClinicalNote }[];
+  private prescriptions: { orgId: string; patientId: string; record: PrescriptionRecord }[];
 
   constructor() {
     this.users = new Map();
     this.patients = new Map();
     this.careTeams = [];
+    this.vitals = [];
+    this.notes = [];
+    this.prescriptions = [];
     this.reset();
   }
 
@@ -19,6 +33,9 @@ export class MockDataService implements DataService {
     this.users.clear();
     this.patients.clear();
     this.careTeams = [];
+    this.vitals = [];
+    this.notes = [];
+    this.prescriptions = [];
 
     // 1. First admins
     for (const fa of CANONICAL_SEED.firstAdmins) {
@@ -88,6 +105,136 @@ export class MockDataService implements DataService {
         match.record.removedAt = update.data.removedAt;
       }
     }
+
+    // 7. Clinical Vitals
+    const now = Date.now();
+    for (const v of CANONICAL_SEED.vitals) {
+      const recAt = new Date(now - v.offsetMs).toISOString();
+      const creAt = new Date(now - v.offsetMs).toISOString();
+      this.vitals.push({
+        orgId: v.orgId,
+        patientId: v.patientId,
+        record: {
+          id: v.id,
+          patientId: v.patientId,
+          authorId: v.authorId,
+          source: v.source,
+          recordedAt: recAt,
+          createdAt: creAt,
+          heartRate: v.heartRate,
+          respRate: v.respRate,
+          systolic: v.systolic,
+          diastolic: v.diastolic,
+          tempC: v.tempC,
+          spo2: v.spo2,
+          consciousness: v.consciousness,
+          onOxygen: v.onOxygen,
+          glucoseMgDl: v.glucoseMgDl,
+          glucoseContext: v.glucoseContext,
+          correctsId: v.correctsId,
+        },
+      });
+    }
+
+    // 8. Clinical Notes
+    for (const n of CANONICAL_SEED.notes) {
+      const creAt = new Date(now - n.offsetMs).toISOString();
+      const finAt = n.status === 'final' ? new Date(now - n.offsetMs + 60000).toISOString() : undefined;
+      this.notes.push({
+        orgId: n.orgId,
+        patientId: n.patientId,
+        record: {
+          id: n.id,
+          patientId: n.patientId,
+          authorId: n.authorId,
+          body: n.body,
+          status: n.status,
+          createdAt: creAt as any,
+          finalisedAt: finAt as any,
+          correctsId: n.correctsId,
+        },
+      });
+    }
+
+    // 9. Prescriptions
+    for (const rx of CANONICAL_SEED.prescriptions) {
+      const creAt = new Date(now - rx.offsetMs).toISOString();
+      const discAt = rx.status === 'discontinued'
+        ? new Date(now - (rx.discontinueOffsetMs ?? rx.offsetMs / 2)).toISOString()
+        : undefined;
+      this.prescriptions.push({
+        orgId: rx.orgId,
+        patientId: rx.patientId,
+        record: {
+          id: rx.id,
+          patientId: rx.patientId,
+          authorId: rx.authorId,
+          medication: rx.medication,
+          dose: rx.dose,
+          route: rx.route,
+          frequency: rx.frequency,
+          status: rx.status,
+          createdAt: creAt,
+          discontinuedAt: discAt,
+          discontinuedBy: rx.discontinuedBy,
+          correctsId: rx.correctsId,
+        },
+      });
+    }
+  }
+
+  async getPatientChart(orgId: string, patientId: string, uid: string): Promise<PatientChartData> {
+    const pItem = this.patients.get(patientId);
+    if (!pItem || pItem.orgId !== orgId) {
+      throw new Error(`Patient document ${patientId} not found in ${orgId}`);
+    }
+
+    // Care team / Linked patient access check
+    const isActiveTeamMember = this.careTeams.some(
+      (ct) =>
+        ct.orgId === orgId &&
+        ct.record.patientId === patientId &&
+        ct.record.userId === uid &&
+        ct.record.status === 'active'
+    );
+    const isLinkedPatient = pItem.patient.linkedUserId === uid;
+
+    if (!isActiveTeamMember && !isLinkedPatient) {
+      throw new Error("Permission denied: You're not on this patient's care team.");
+    }
+
+    const careTeam = this.careTeams
+      .filter((ct) => ct.orgId === orgId && ct.record.patientId === patientId && ct.record.status === 'active')
+      .map((ct) => ({ ...ct.record }));
+
+    const vitals = this.vitals
+      .filter((v) => v.orgId === orgId && v.patientId === patientId)
+      .map((v) => ({ ...v.record }))
+      .sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt));
+
+    const finalNotes = this.notes
+      .filter((n) => n.orgId === orgId && n.patientId === patientId && n.record.status === 'final')
+      .map((n) => ({ ...n.record }))
+      .sort((a, b) => Date.parse(b.createdAt as any) - Date.parse(a.createdAt as any));
+
+    const myDrafts = this.notes
+      .filter((n) => n.orgId === orgId && n.patientId === patientId && n.record.status === 'draft' && n.record.authorId === uid)
+      .map((n) => ({ ...n.record }))
+      .sort((a, b) => Date.parse(b.createdAt as any) - Date.parse(a.createdAt as any));
+
+    const prescriptions = this.prescriptions
+      .filter((rx) => rx.orgId === orgId && rx.patientId === patientId)
+      .map((rx) => ({ ...rx.record }))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
+    return {
+      patient: { ...pItem.patient },
+      careTeam,
+      vitals,
+      finalNotes,
+      myDrafts,
+      prescriptions,
+    };
   }
 
   async getStaffPatients(orgId: string, staffUid: string): Promise<PatientLoadResult[]> {

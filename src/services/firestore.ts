@@ -9,8 +9,16 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore';
-import type { PatientRecord, UserRecord, CareTeamMemberRecord, PatientOrgCareTeam } from '../types';
-import type { DataService, PatientLoadResult, StaffPatientRow } from './types';
+import type {
+  PatientRecord,
+  UserRecord,
+  CareTeamMemberRecord,
+  PatientOrgCareTeam,
+  ClinicalNote,
+  VitalRecord,
+  PrescriptionRecord
+} from '../types';
+import type { DataService, PatientLoadResult, StaffPatientRow, PatientChartData } from './types';
 import type { SessionService, SessionState } from './session';
 
 /**
@@ -137,6 +145,139 @@ export async function getMyCareTeams(
   return orgCareTeams;
 }
 
+export async function getPatientChart(
+  db: any,
+  orgId: string,
+  patientId: string,
+  uid: string
+): Promise<PatientChartData> {
+  // 1. Patient document
+  const patientRef = doc(db, 'organizations', orgId, 'patients', patientId);
+  const patientSnap = await getDoc(patientRef);
+  if (!patientSnap.exists()) {
+    throw new Error(`Patient document ${patientId} not found in ${orgId}`);
+  }
+  const patient = { ...(patientSnap.data() as PatientRecord), id: patientSnap.id };
+
+  // 2. Active care team members
+  const careTeamsRef = collection(db, 'organizations', orgId, 'care_teams');
+  const ctQuery = query(
+    careTeamsRef,
+    where('patientId', '==', patientId),
+    where('status', '==', 'active')
+  );
+  const ctSnap = await getDocs(ctQuery);
+  const careTeam: CareTeamMemberRecord[] = ctSnap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as CareTeamMemberRecord),
+  }));
+
+  // 3. Vitals subcollection (sorted newest first by recordedAt)
+  const vitalsRef = collection(db, 'organizations', orgId, 'patients', patientId, 'vitals');
+  const vitalsSnap = await getDocs(vitalsRef);
+  const vitals: VitalRecord[] = vitalsSnap.docs
+    .map((d) => {
+      const data = d.data() as any;
+      let recAt = data.recordedAt;
+      if (recAt && typeof recAt === 'object' && typeof recAt.toDate === 'function') {
+        recAt = recAt.toDate().toISOString();
+      }
+      let creAt = data.createdAt;
+      if (creAt && typeof creAt === 'object' && typeof creAt.toDate === 'function') {
+        creAt = creAt.toDate().toISOString();
+      }
+      return {
+        id: d.id,
+        ...data,
+        recordedAt: recAt,
+        createdAt: creAt,
+      } as VitalRecord;
+    })
+    .sort((a, b) => {
+      const aTime = a.recordedAt ? Date.parse(a.recordedAt) : 0;
+      const bTime = b.recordedAt ? Date.parse(b.recordedAt) : 0;
+      return bTime - aTime;
+    });
+
+  // 4. Notes: ONLY the two allowed query shapes!
+  // a) Final notes: where('status', '==', 'final')
+  // b) My drafts: where('authorId', '==', uid) and where('status', '==', 'draft')
+  const notesRef = collection(db, 'organizations', orgId, 'patients', patientId, 'notes');
+  const finalNotesQuery = query(notesRef, where('status', '==', 'final'));
+  const myDraftsQuery = query(notesRef, where('authorId', '==', uid), where('status', '==', 'draft'));
+
+  const [finalNotesSnap, myDraftsSnap] = await Promise.all([
+    getDocs(finalNotesQuery),
+    getDocs(myDraftsQuery),
+  ]);
+
+  const mapNote = (d: any): ClinicalNote => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      patientId,
+      authorId: data.authorId,
+      body: data.body,
+      status: data.status,
+      createdAt: data.createdAt,
+      finalisedAt: data.finalisedAt,
+      correctsId: data.correctsId,
+    };
+  };
+
+  const finalNotes = finalNotesSnap.docs
+    .map(mapNote)
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? Date.parse(a.createdAt as any) : 0);
+      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? Date.parse(b.createdAt as any) : 0);
+      return bTime - aTime;
+    });
+
+  const myDrafts = myDraftsSnap.docs
+    .map(mapNote)
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? Date.parse(a.createdAt as any) : 0);
+      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? Date.parse(b.createdAt as any) : 0);
+      return bTime - aTime;
+    });
+
+  // 5. Prescriptions subcollection
+  const rxRef = collection(db, 'organizations', orgId, 'patients', patientId, 'prescriptions');
+  const rxSnap = await getDocs(rxRef);
+  const prescriptions: PrescriptionRecord[] = rxSnap.docs
+    .map((d) => {
+      const data = d.data() as any;
+      let creAt = data.createdAt;
+      if (creAt && typeof creAt === 'object' && typeof creAt.toDate === 'function') {
+        creAt = creAt.toDate().toISOString();
+      }
+      let discAt = data.discontinuedAt;
+      if (discAt && typeof discAt === 'object' && typeof discAt.toDate === 'function') {
+        discAt = discAt.toDate().toISOString();
+      }
+      return {
+        id: d.id,
+        ...data,
+        createdAt: creAt,
+        discontinuedAt: discAt,
+      } as PrescriptionRecord;
+    })
+    .sort((a, b) => {
+      const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return bTime - aTime;
+    });
+
+  return {
+    patient,
+    careTeam,
+    vitals,
+    finalNotes,
+    myDrafts,
+    prescriptions,
+  };
+}
+
 export class FirestoreDataService implements DataService {
   private db: any;
 
@@ -164,6 +305,10 @@ export class FirestoreDataService implements DataService {
 
   async getMyCareTeams(patientUid: string): Promise<PatientOrgCareTeam[]> {
     return getMyCareTeams(this.db, patientUid);
+  }
+
+  async getPatientChart(orgId: string, patientId: string, uid: string): Promise<PatientChartData> {
+    return getPatientChart(this.db, orgId, patientId, uid);
   }
 }
 

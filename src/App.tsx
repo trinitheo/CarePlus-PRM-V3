@@ -1,10 +1,11 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useParams } from 'react-router-dom';
 import { Heart, Shield, LogOut } from 'lucide-react';
 import { sessionService, type SessionState } from './services';
 import { PatientPanel } from './components/PatientPanel';
 import { PatientCareTeamView } from './components/PatientCareTeamView';
 import { RolePlaceholder } from './components/RolePlaceholder';
+import { PatientChartScreen } from './components/chart/PatientChartScreen';
 import { SignInScreen } from './components/SignInScreen';
 import { AccountNotSetUpScreen } from './components/AccountNotSetUpScreen';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
@@ -20,6 +21,7 @@ const RulesMatrix = import.meta.env.DEV
   : null;
 
 const MainApp: React.FC = () => {
+  const { orgId, patientId } = useParams<{ orgId: string; patientId: string }>();
   const [sessionState, setSessionState] = useState<SessionState>(sessionService.getState());
 
   useEffect(() => {
@@ -129,7 +131,9 @@ const MainApp: React.FC = () => {
             )}
           </div>
         ) : sessionState.status === 'signedIn' && currentUser ? (
-          isCareTeamMember ? (
+          orgId && patientId ? (
+            <PatientChartScreen currentUser={currentUser} />
+          ) : isCareTeamMember ? (
             <PatientPanel currentUser={currentUser} />
           ) : currentUser.role === 'patient' ? (
             <PatientCareTeamView currentUser={currentUser} />
@@ -149,6 +153,7 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<MainApp />} />
+        <Route path="/patients/:orgId/:patientId" element={<MainApp />} />
         {import.meta.env.DEV && RulesMatrix && (
           <Route
             path="/dev/rules"

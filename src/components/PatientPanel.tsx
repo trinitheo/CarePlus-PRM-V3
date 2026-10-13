@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Users, AlertCircle, FileText, RefreshCw, UserCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Users, AlertCircle, FileText, RefreshCw, UserCheck, ChevronRight } from 'lucide-react';
 import type { PatientLoadResult } from '../services/types';
 import type { UserRecord } from '../types';
 import { dataService } from '../services';
@@ -10,6 +11,7 @@ interface PatientPanelProps {
 }
 
 export const PatientPanel: React.FC<PatientPanelProps> = ({ currentUser }) => {
+  const navigate = useNavigate();
   const [results, setResults] = useState<PatientLoadResult[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +143,18 @@ export const PatientPanel: React.FC<PatientPanelProps> = ({ currentUser }) => {
 
                       const { patient, memberRole } = res.value;
                       return (
-                        <tr key={patient.id} className={`${tokens.surfaces.hover} transition-colors`}>
+                        <tr
+                          key={patient.id}
+                          onClick={() => navigate(`/patients/${orgId}/${patient.id}`)}
+                          className={`${tokens.surfaces.hover} transition-colors cursor-pointer`}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              navigate(`/patients/${orgId}/${patient.id}`);
+                            }
+                          }}
+                        >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-primary-subtle text-primary-text font-semibold flex items-center justify-center text-xs border border-primary-base/20">
@@ -172,6 +185,7 @@ export const PatientPanel: React.FC<PatientPanelProps> = ({ currentUser }) => {
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-status-active-bg text-status-active-text border border-status-active-border">
                               <UserCheck className="w-3.5 h-3.5" />
                               Active Member
+                              <ChevronRight className="w-3.5 h-3.5 ml-1 text-text-muted" />
                             </span>
                           </td>
                         </tr>
