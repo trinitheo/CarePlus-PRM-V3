@@ -11,24 +11,30 @@ interface ChartVitalsTabProps {
 
 export const ChartVitalsTab: React.FC<ChartVitalsTabProps> = ({ chart }) => {
   const superseded = supersededIds(chart.vitals);
+  const now = Date.now();
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+  const recentVitals = chart.vitals.filter((v) => {
+    const t = v.recordedAt ? Date.parse(v.recordedAt) : 0;
+    return t ? now - t <= twentyFourHoursMs : true;
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between pb-2 border-b border-border-default">
         <h3 className={`text-lg font-bold flex items-center gap-2 ${tokens.text.title}`}>
           <Activity className="w-5 h-5 text-primary-base" />
-          Vitals History ({chart.vitals.length})
+          Vitals History (Last 24 Hours: {recentVitals.length})
         </h3>
         <span className="text-xs text-text-muted">Newest First</span>
       </div>
 
-      {chart.vitals.length === 0 ? (
+      {recentVitals.length === 0 ? (
         <div className={`p-8 rounded-xl border text-center ${tokens.surfaces.card} ${tokens.borders.default}`}>
-          <p className="text-base text-text-muted">No vital signs recorded for this patient.</p>
+          <p className="text-base text-text-muted">No vital signs recorded in the last 24 hours.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {chart.vitals.map((v) => {
+          {recentVitals.map((v) => {
             const isSuperseded = Boolean(v.id && superseded.has(v.id));
             const news2 = calculateNEWS2({
               respRate: v.respRate,
