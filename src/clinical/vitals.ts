@@ -20,16 +20,12 @@ export type NEWS2ParameterKey =
 
 export interface VitalsInput {
   heartRate?: number | null;
-  hr?: number | null;
   respRate?: number | null;
-  rr?: number | null;
   systolic?: number | null;
   diastolic?: number | null;
   tempC?: number | null;
-  temperature?: number | null;
   spo2?: number | null;
   glucoseMgDl?: number | null;
-  glucose?: number | null;
   weightKg?: number | null;
   onOxygen?: boolean | null;
   consciousness?: 'A' | 'C' | 'V' | 'P' | 'U' | string | null;
@@ -128,13 +124,13 @@ export function getGlucoseReferenceFlag(val: unknown): ReferenceFlag {
 }
 
 export function getReferenceFlags(vitals: VitalsInput): VitalsReferenceFlags {
-  const hrVal = vitals.heartRate !== undefined ? vitals.heartRate : vitals.hr;
-  const rrVal = vitals.respRate !== undefined ? vitals.respRate : vitals.rr;
+  const hrVal = vitals.heartRate;
+  const rrVal = vitals.respRate;
   const sysVal = vitals.systolic;
   const diaVal = vitals.diastolic;
-  const tempVal = vitals.tempC !== undefined ? vitals.tempC : vitals.temperature;
+  const tempVal = vitals.tempC;
   const spo2Val = vitals.spo2;
-  const gluVal = vitals.glucoseMgDl !== undefined ? vitals.glucoseMgDl : vitals.glucose;
+  const gluVal = vitals.glucoseMgDl;
 
   const hrFlag = getHeartRateReferenceFlag(hrVal);
   const rrFlag = getRespRateReferenceFlag(rrVal);
@@ -228,13 +224,13 @@ export function scoreNEWS2Temperature(val: unknown): number | null {
 }
 
 export function calculateNEWS2(vitals: VitalsInput): NEWS2Result {
-  const rrVal = vitals.respRate !== undefined ? vitals.respRate : vitals.rr;
+  const rrVal = vitals.respRate;
   const spo2Val = vitals.spo2;
   const oxygenVal = vitals.onOxygen;
   const sysVal = vitals.systolic;
-  const hrVal = vitals.heartRate !== undefined ? vitals.heartRate : vitals.hr;
+  const hrVal = vitals.heartRate;
   const consVal = vitals.consciousness;
-  const tempVal = vitals.tempC !== undefined ? vitals.tempC : vitals.temperature;
+  const tempVal = vitals.tempC;
 
   const rrScore = scoreNEWS2RespRate(rrVal);
   const spo2Score = scoreNEWS2SpO2(spo2Val);
@@ -286,15 +282,6 @@ export function calculateNEWS2(vitals: VitalsInput): NEWS2Result {
   }
 
   // All 7 inputs are present and valid
-  const total =
-    rrScore! +
-    spo2Score!; +
-    oxygenScore! +
-    sysScore! +
-    hrScore! +
-    consScore! +
-    tempScore!;
-
   const totalSum =
     (rrScore ?? 0) +
     (spo2Score ?? 0) +
@@ -326,13 +313,13 @@ export function calculateNEWS2(vitals: VitalsInput): NEWS2Result {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Glucose Band (<54 'urgentLow'; 54–69 'low'; 70–180 'inRange'; 181–250 'aboveTarget'; >250 'high')
+// 3. Glucose Band (<54 'urgentLow'; 54 to <70 'low'; 70–180 'inRange'; >180–250 'aboveTarget'; >250 'high')
 // ---------------------------------------------------------------------------
 
 export function getGlucoseBand(val: unknown): GlucoseBand | null {
   if (!isValidNumber(val)) return null;
   if (val < 54) return 'urgentLow';
-  if (val <= 69) return 'low';
+  if (val < 70) return 'low';
   if (val <= 180) return 'inRange';
   if (val <= 250) return 'aboveTarget';
   return 'high';

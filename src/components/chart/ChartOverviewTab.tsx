@@ -2,7 +2,8 @@ import React from 'react';
 import type { PatientChartData } from '../../services/types';
 import { latestVitals } from '../../clinical/chart';
 import { tokens } from '../../theme/tokens';
-import { Activity, Pill, FileText, Users, Clock, AlertTriangle } from 'lucide-react';
+import { Activity, Pill, FileText } from 'lucide-react';
+import { ChartCareTeamCard } from './ChartCareTeamCard';
 
 interface ChartOverviewTabProps {
   chart: PatientChartData;
@@ -66,7 +67,7 @@ export const ChartOverviewTab: React.FC<ChartOverviewTabProps> = ({ chart }) => 
                     {getFlagBadge(latest.bloodPressure.flagSystolic)}
                     {latest.bloodPressure.isStale && (
                       <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-role-admin-bg text-role-admin-text border border-role-admin-border flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Stale (&gt;24h)
+                        Stale (&gt;24h)
                       </span>
                     )}
                   </div>
@@ -278,30 +279,7 @@ export const ChartOverviewTab: React.FC<ChartOverviewTabProps> = ({ chart }) => 
 
         {/* Column 3: Care Team Members */}
         <div className="space-y-6 lg:col-span-1">
-          <div className={`p-5 rounded-xl border ${tokens.surfaces.card} ${tokens.borders.default} shadow-xs space-y-4`}>
-            <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-              <h3 className={`text-base font-bold flex items-center gap-2 ${tokens.text.title}`}>
-                <Users className="w-5 h-5 text-primary-base" />
-                Care Team ({chart.careTeam.length})
-              </h3>
-            </div>
-            <div className="space-y-3">
-              {chart.careTeam.map((m) => (
-                <div
-                  key={m.id || m.userId}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border-subtle bg-surface-muted"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-text-title">{m.userId}</div>
-                    <div className="text-xs text-text-muted capitalize">{m.role}</div>
-                  </div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${tokens.roles[m.role]}`}>
-                    {m.role}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ChartCareTeamCard careTeam={chart.careTeam} />
         </div>
       </div>
     </div>

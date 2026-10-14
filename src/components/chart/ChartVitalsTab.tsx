@@ -1,40 +1,76 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { PatientChartData } from '../../services/types';
-import { supersededIds, formatAge, isStale } from '../../clinical/chart';
+import { supersededIds, formatAge, isStale, parseRecordedAtMillis } from '../../clinical/chart';
 import { calculateNEWS2, getReferenceFlags, getGlucoseBand } from '../../clinical/vitals';
 import { tokens } from '../../theme/tokens';
-import { Activity, AlertTriangle, CornerDownRight, CheckCircle2, Clock } from 'lucide-react';
+import { Activity, AlertTriangle, CornerDownRight, Clock } from 'lucide-react';
 
 interface ChartVitalsTabProps {
   chart: PatientChartData;
 }
 
+type VitalsFilter = 'all' | 'last24h';
+
 export const ChartVitalsTab: React.FC<ChartVitalsTabProps> = ({ chart }) => {
+  const [filter, setFilter] = useState<VitalsFilter>('all');
   const superseded = supersededIds(chart.vitals);
   const now = Date.now();
   const twentyFourHoursMs = 24 * 60 * 60 * 1000;
-  const recentVitals = chart.vitals.filter((v) => {
-    const t = v.recordedAt ? Date.parse(v.recordedAt) : 0;
-    return t ? now - t <= twentyFourHoursMs : true;
+
+  const filteredVitals = chart.vitals.filter((v) => {
+    if (filter === 'last24h') {
+      const t = parseRecordedAtMillis(v.recordedAt);
+      return t ? now - t <= twentyFourHoursMs : false;
+    }
+    return true;
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between pb-2 border-b border-border-default">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border-default">
         <h3 className={`text-lg font-bold flex items-center gap-2 ${tokens.text.title}`}>
           <Activity className="w-5 h-5 text-primary-base" />
-          Vitals History (Last 24 Hours: {recentVitals.length})
+          Vitals History ({filter === 'all' ? `All: ${filteredVitals.length}` : `Last 24h: ${filteredVitals.length}`})
         </h3>
-        <span className="text-xs text-text-muted">Newest First</span>
+        
+        {/* Two-option toggle: "All" (default) and "Last 24h" */}
+        <div className="inline-flex rounded-lg border border-border-default bg-surface-muted p-1">
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors min-h-[36px] cursor-pointer ${
+              filter === 'all'
+                ? 'bg-surface-card text-text-title shadow-xs border border-border-default'
+                : 'text-text-muted hover:text-text-body'
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('last24h')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors min-h-[36px] cursor-pointer ${
+              filter === 'last24h'
+                ? 'bg-surface-card text-text-title shadow-xs border border-border-default'
+                : 'text-text-muted hover:text-text-body'
+            }`}
+          >
+            Last 24h
+          </button>
+        </div>
       </div>
 
-      {recentVitals.length === 0 ? (
+      {filteredVitals.length === 0 ? (
         <div className={`p-8 rounded-xl border text-center ${tokens.surfaces.card} ${tokens.borders.default}`}>
-          <p className="text-base text-text-muted">No vital signs recorded in the last 24 hours.</p>
+          <p className="text-base text-text-muted">
+            {filter === 'last24h'
+              ? 'None in the last 24 hours — showing nothing; switch to All'
+              : 'No vital signs recorded.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {recentVitals.map((v) => {
+          {filteredVitals.map((v) => {
             const isSuperseded = Boolean(v.id && superseded.has(v.id));
             const news2 = calculateNEWS2({
               respRate: v.respRate,
@@ -44,15 +80,6 @@ export const ChartVitalsTab: React.FC<ChartVitalsTabProps> = ({ chart }) => {
               heartRate: v.heartRate,
               consciousness: v.consciousness,
               tempC: v.tempC,
-            });
-            const flags = getReferenceFlags({
-              heartRate: v.heartRate,
-              respRate: v.respRate,
-              systolic: v.systolic,
-              diastolic: v.diastolic,
-              tempC: v.tempC,
-              spo2: v.spo2,
-              glucoseMgDl: v.glucoseMgDl,
             });
             const glucoseBand = v.glucoseMgDl !== undefined && v.glucoseMgDl !== null
               ? getGlucoseBand(v.glucoseMgDl)

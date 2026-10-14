@@ -1,0 +1,314 @@
+TAP version 13
+# Subtest: Task 7b: Chart Logic Unit Tests (src/clinical/chart.ts)
+    # Subtest: supersededIds
+        # Subtest: returns empty Set when no records have correctsId
+        ok 1 - returns empty Set when no records have correctsId
+          ---
+          duration_ms: 0.606388
+          type: 'test'
+          ...
+        # Subtest: collects all records referenced by correctsId
+        ok 2 - collects all records referenced by correctsId
+          ---
+          duration_ms: 0.270303
+          type: 'test'
+          ...
+        1..2
+    ok 1 - supersededIds
+      ---
+      duration_ms: 1.525659
+      type: 'suite'
+      ...
+    # Subtest: isStale (>24 hours)
+        # Subtest: returns false for reading less than or equal to 24 hours old
+        ok 1 - returns false for reading less than or equal to 24 hours old
+          ---
+          duration_ms: 0.727542
+          type: 'test'
+          ...
+        # Subtest: returns true for reading older than 24 hours
+        ok 2 - returns true for reading older than 24 hours
+          ---
+          duration_ms: 0.153572
+          type: 'test'
+          ...
+        # Subtest: returns false for missing or invalid timestamps
+        ok 3 - returns false for missing or invalid timestamps
+          ---
+          duration_ms: 0.113102
+          type: 'test'
+          ...
+        1..3
+    ok 2 - isStale (>24 hours)
+      ---
+      duration_ms: 1.201504
+      type: 'suite'
+      ...
+    # Subtest: latestVitals (per-parameter non-superseded readings)
+        # Subtest: extracts latest non-superseded reading for each parameter with its own timestamp
+        ok 1 - extracts latest non-superseded reading for each parameter with its own timestamp
+          ---
+          duration_ms: 0.802573
+          type: 'test'
+          ...
+        # Subtest: ignores superseded readings when extracting latest parameter values
+        ok 2 - ignores superseded readings when extracting latest parameter values
+          ---
+          duration_ms: 0.418357
+          type: 'test'
+          ...
+        1..2
+    ok 3 - latestVitals (per-parameter non-superseded readings)
+      ---
+      duration_ms: 1.610426
+      type: 'suite'
+      ...
+    # Subtest: NEWS2 Isolation Rule: NEWS2 is NEVER computed across readings
+        # Subtest: latest reading is incomplete (BP-only) and header explicitly flags incomplete, not pulling other readings
+        ok 1 - latest reading is incomplete (BP-only) and header explicitly flags incomplete, not pulling other readings
+          ---
+          duration_ms: 0.551241
+          type: 'test'
+          ...
+        # Subtest: proves NEWS2 total is never synthesized from combining partial readings
+        ok 2 - proves NEWS2 total is never synthesized from combining partial readings
+          ---
+          duration_ms: 0.309319
+          type: 'test'
+          ...
+        1..2
+    ok 4 - NEWS2 Isolation Rule: NEWS2 is NEVER computed across readings
+      ---
+      duration_ms: 1.062631
+      type: 'suite'
+      ...
+    1..4
+ok 1 - Task 7b: Chart Logic Unit Tests (src/clinical/chart.ts)
+  ---
+  duration_ms: 6.076212
+  type: 'suite'
+  ...
+# Subtest: Task 7a: Vitals Reference Range Flags
+    # Subtest: Heart Rate: 60–100 bpm edges and missing values
+    ok 1 - Heart Rate: 60–100 bpm edges and missing values
+      ---
+      duration_ms: 0.877736
+      type: 'test'
+      ...
+    # Subtest: Respiratory Rate: 12–18 breaths/min edges and missing values
+    ok 2 - Respiratory Rate: 12–18 breaths/min edges and missing values
+      ---
+      duration_ms: 0.327563
+      type: 'test'
+      ...
+    # Subtest: Systolic BP: 90–120 mmHg edges and missing values
+    ok 3 - Systolic BP: 90–120 mmHg edges and missing values
+      ---
+      duration_ms: 0.188695
+      type: 'test'
+      ...
+    # Subtest: Diastolic BP: 60–80 mmHg edges and missing values
+    ok 4 - Diastolic BP: 60–80 mmHg edges and missing values
+      ---
+      duration_ms: 0.141337
+      type: 'test'
+      ...
+    # Subtest: Temperature: 36.5–37.3 °C edges and missing values
+    ok 5 - Temperature: 36.5–37.3 °C edges and missing values
+      ---
+      duration_ms: 0.145149
+      type: 'test'
+      ...
+    # Subtest: SpO₂: ≥95 % edges and missing values
+    ok 6 - SpO₂: ≥95 % edges and missing values
+      ---
+      duration_ms: 0.119082
+      type: 'test'
+      ...
+    # Subtest: Glucose: 70–180 mg/dL edges and missing values
+    ok 7 - Glucose: 70–180 mg/dL edges and missing values
+      ---
+      duration_ms: 0.174779
+      type: 'test'
+      ...
+    # Subtest: getReferenceFlags evaluates all parameters and handles missing fields
+    ok 8 - getReferenceFlags evaluates all parameters and handles missing fields
+      ---
+      duration_ms: 1.526602
+      type: 'test'
+      ...
+    1..8
+ok 2 - Task 7a: Vitals Reference Range Flags
+  ---
+  duration_ms: 4.782777
+  type: 'suite'
+  ...
+# Subtest: Task 7a: NEWS2 Parameter Scoring & Boundaries
+    # Subtest: Respiratory Rate boundaries and decimals (≤8 → 3; 9–11 → 1; 12–20 → 0; 21–24 → 2; ≥25 → 3)
+    ok 1 - Respiratory Rate boundaries and decimals (≤8 → 3; 9–11 → 1; 12–20 → 0; 21–24 → 2; ≥25 → 3)
+      ---
+      duration_ms: 0.372455
+      type: 'test'
+      ...
+    # Subtest: SpO₂ boundaries and decimals (≤91 → 3; 92–93 → 2; 94–95 → 1; ≥96 → 0)
+    ok 2 - SpO₂ boundaries and decimals (≤91 → 3; 92–93 → 2; 94–95 → 1; ≥96 → 0)
+      ---
+      duration_ms: 0.306424
+      type: 'test'
+      ...
+    # Subtest: On oxygen (yes → 2; air → 0; non-boolean → null)
+    ok 3 - On oxygen (yes → 2; air → 0; non-boolean → null)
+      ---
+      duration_ms: 0.11711
+      type: 'test'
+      ...
+    # Subtest: Systolic BP boundaries and decimals (≤90 → 3; 91–100 → 2; 101–110 → 1; 111–219 → 0; ≥220 → 3)
+    ok 4 - Systolic BP boundaries and decimals (≤90 → 3; 91–100 → 2; 101–110 → 1; 111–219 → 0; ≥220 → 3)
+      ---
+      duration_ms: 0.111858
+      type: 'test'
+      ...
+    # Subtest: Heart Rate boundaries and decimals (≤40 → 3; 41–50 → 1; 51–90 → 0; 91–110 → 1; 111–130 → 2; ≥131 → 3)
+    ok 5 - Heart Rate boundaries and decimals (≤40 → 3; 41–50 → 1; 51–90 → 0; 91–110 → 1; 111–130 → 2; ≥131 → 3)
+      ---
+      duration_ms: 0.113501
+      type: 'test'
+      ...
+    # Subtest: Consciousness (A → 0; C, V, P, U → 3; invalid → null)
+    ok 6 - Consciousness (A → 0; C, V, P, U → 3; invalid → null)
+      ---
+      duration_ms: 0.08969
+      type: 'test'
+      ...
+    # Subtest: Temperature boundaries and decimals (≤35.0 → 3; 35.1–36.0 → 1; 36.1–38.0 → 0; 38.1–39.0 → 1; ≥39.1 → 2)
+    ok 7 - Temperature boundaries and decimals (≤35.0 → 3; 35.1–36.0 → 1; 36.1–38.0 → 0; 38.1–39.0 → 1; ≥39.1 → 2)
+      ---
+      duration_ms: 0.095594
+      type: 'test'
+      ...
+    1..7
+ok 3 - Task 7a: NEWS2 Parameter Scoring & Boundaries
+  ---
+  duration_ms: 1.517616
+  type: 'suite'
+  ...
+# Subtest: Task 7a: NEWS2 Aggregate Bands & Red Parameters
+    # Subtest: total 0 → low band, empty redParameters
+    ok 1 - total 0 → low band, empty redParameters
+      ---
+      duration_ms: 0.313541
+      type: 'test'
+      ...
+    # Subtest: total 4 with no parameter scoring 3 → low band
+    ok 2 - total 4 with no parameter scoring 3 → low band
+      ---
+      duration_ms: 0.11295
+      type: 'test'
+      ...
+    # Subtest: total 3 with a single 3 → lowMedium band
+    ok 3 - total 3 with a single 3 → lowMedium band
+      ---
+      duration_ms: 0.101255
+      type: 'test'
+      ...
+    # Subtest: total 4 with a single 3 → lowMedium band
+    ok 4 - total 4 with a single 3 → lowMedium band
+      ---
+      duration_ms: 0.152025
+      type: 'test'
+      ...
+    # Subtest: total of 5 that includes a single 3 → medium band
+    ok 5 - total of 5 that includes a single 3 → medium band
+      ---
+      duration_ms: 0.088659
+      type: 'test'
+      ...
+    # Subtest: total 5 with no parameter scoring 3 → medium band
+    ok 6 - total 5 with no parameter scoring 3 → medium band
+      ---
+      duration_ms: 0.08103
+      type: 'test'
+      ...
+    # Subtest: total 6 → medium band
+    ok 7 - total 6 → medium band
+      ---
+      duration_ms: 0.07865
+      type: 'test'
+      ...
+    # Subtest: total 7 → high band
+    ok 8 - total 7 → high band
+      ---
+      duration_ms: 1.256023
+      type: 'test'
+      ...
+    # Subtest: total ≥ 7 (e.g. 15) with multiple 3s listed in redParameters
+    ok 9 - total ≥ 7 (e.g. 15) with multiple 3s listed in redParameters
+      ---
+      duration_ms: 0.267343
+      type: 'test'
+      ...
+    1..9
+ok 4 - Task 7a: NEWS2 Aggregate Bands & Red Parameters
+  ---
+  duration_ms: 2.698903
+  type: 'suite'
+  ...
+# Subtest: Task 7a: NEWS2 Incomplete & Invalid Inputs
+    # Subtest: each missing input individually causes complete: false, total: null, band: null
+    ok 1 - each missing input individually causes complete: false, total: null, band: null
+      ---
+      duration_ms: 0.251808
+      type: 'test'
+      ...
+    # Subtest: invalid inputs count as missing (NaN, invalid consciousness, non-boolean onOxygen)
+    ok 2 - invalid inputs count as missing (NaN, invalid consciousness, non-boolean onOxygen)
+      ---
+      duration_ms: 0.104887
+      type: 'test'
+      ...
+    # Subtest: all inputs missing lists all 7 in missingInputs
+    ok 3 - all inputs missing lists all 7 in missingInputs
+      ---
+      duration_ms: 0.07976
+      type: 'test'
+      ...
+    1..3
+ok 5 - Task 7a: NEWS2 Incomplete & Invalid Inputs
+  ---
+  duration_ms: 0.522401
+  type: 'suite'
+  ...
+# Subtest: Task 7a: Glucose Bands & Edge Values
+    # Subtest: edges: 53.9, 54, 69.5, 70, 180, 180.5, 250, 250.5
+    ok 1 - edges: 53.9, 54, 69.5, 70, 180, 180.5, 250, 250.5
+      ---
+      duration_ms: 0.114622
+      type: 'test'
+      ...
+    # Subtest: edges: 53/54, 69/70, 180/181, 250/251
+    ok 2 - edges: 53/54, 69/70, 180/181, 250/251
+      ---
+      duration_ms: 0.060917
+      type: 'test'
+      ...
+    # Subtest: missing and invalid glucose values return null
+    ok 3 - missing and invalid glucose values return null
+      ---
+      duration_ms: 0.048596
+      type: 'test'
+      ...
+    1..3
+ok 6 - Task 7a: Glucose Bands & Edge Values
+  ---
+  duration_ms: 0.367289
+  type: 'suite'
+  ...
+1..6
+# tests 39
+# suites 10
+# pass 39
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 360.388165

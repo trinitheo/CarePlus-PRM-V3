@@ -452,6 +452,17 @@ describe('Task 7a: NEWS2 Incomplete & Invalid Inputs', () => {
 });
 
 describe('Task 7a: Glucose Bands & Edge Values', () => {
+  it('edges: 53.9, 54, 69.5, 70, 180, 180.5, 250, 250.5', () => {
+    assert.equal(getGlucoseBand(53.9), 'urgentLow');
+    assert.equal(getGlucoseBand(54), 'low');
+    assert.equal(getGlucoseBand(69.5), 'low');
+    assert.equal(getGlucoseBand(70), 'inRange');
+    assert.equal(getGlucoseBand(180), 'inRange');
+    assert.equal(getGlucoseBand(180.5), 'aboveTarget');
+    assert.equal(getGlucoseBand(250), 'aboveTarget');
+    assert.equal(getGlucoseBand(250.5), 'high');
+  });
+
   it('edges: 53/54, 69/70, 180/181, 250/251', () => {
     // <54 'urgentLow'
     assert.equal(getGlucoseBand(53), 'urgentLow');
