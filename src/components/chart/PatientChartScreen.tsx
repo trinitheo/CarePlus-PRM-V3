@@ -4,6 +4,7 @@ import { ArrowLeft, AlertCircle, ShieldAlert, Activity, FileText, Pill, LayoutDa
 import type { PatientChartData } from '../../services/types';
 import type { UserRecord } from '../../types';
 import { dataService } from '../../services';
+import { ID_TYPE_LABELS } from '../../services/patientMatching';
 import { getChartNEWS2HeaderInfo, formatAge } from '../../clinical/chart';
 import { tokens } from '../../theme/tokens';
 import { ChartOverviewTab } from './ChartOverviewTab';
@@ -148,6 +149,11 @@ export const PatientChartScreen: React.FC<PatientChartScreenProps> = ({ currentU
                 <span className="font-mono text-sm font-semibold px-2.5 py-0.5 rounded-md bg-surface-muted text-text-body border border-border-default">
                   MRN: {patient.mrn}
                 </span>
+                {patient.idType && patient.idNumber && (
+                  <span className="font-mono text-sm font-semibold px-2.5 py-0.5 rounded-md bg-surface-muted text-text-body border border-border-default">
+                    {ID_TYPE_LABELS[patient.idType]}: {patient.idNumber}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-1.5 text-base text-text-muted">
                 <span>Age: <strong className="text-text-title">{calculateAge(patient.dob)}</strong></span>
