@@ -18,7 +18,17 @@ import type {
   VitalRecord,
   PrescriptionRecord
 } from '../types';
-import type { DataService, PatientLoadResult, StaffPatientRow, PatientChartData } from './types';
+import type {
+  DataService,
+  PatientLoadResult,
+  StaffPatientRow,
+  PatientChartData,
+  PatientFileDecision,
+  PatientIdentityInput,
+  NewPatientInput,
+} from './types';
+import type { IdType } from '../types';
+import { searchPatientFiles, createPatientFile, addPatientId } from './patientFiles';
 import type { SessionService, SessionState } from './session';
 
 /**
@@ -309,6 +319,18 @@ export class FirestoreDataService implements DataService {
 
   async getPatientChart(orgId: string, patientId: string, uid: string): Promise<PatientChartData> {
     return getPatientChart(this.db, orgId, patientId, uid);
+  }
+
+  async searchPatientFiles(orgId: string, input: PatientIdentityInput): Promise<PatientFileDecision> {
+    return searchPatientFiles(this.db, orgId, input);
+  }
+
+  async createPatientFile(orgId: string, input: NewPatientInput): Promise<PatientRecord> {
+    return createPatientFile(this.db, orgId, input);
+  }
+
+  async addPatientId(orgId: string, patientId: string, idType: IdType, idNumber: string): Promise<PatientRecord> {
+    return addPatientId(this.db, orgId, patientId, idType, idNumber);
   }
 }
 

@@ -63,6 +63,45 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
+    // Task 8: patient identity. MRNs and identity documents (national ID,
+    // driver's permit) are unique within an organization, enforced by
+    // create-only registries that must be written in the same transaction.
+    function isValidMrn(mrn) {
+      return mrn is string && mrn.matches('^[A-Za-z0-9-]{1,40}$');
+    }
+
+    function hasValidIdPair(data) {
+      return ('idType' in data) && ('idNumber' in data) &&
+        data.idType in ['national_id', 'drivers_permit'] &&
+        data.idNumber is string && data.idNumber.matches('^[A-Z0-9]{3,30}$');
+    }
+
+    function hasNoIdFields(data) {
+      return !('idType' in data) && !('idNumber' in data);
+    }
+
+    function mrnRegisteredAfter(orgId, patientId, mrn) {
+      return existsAfter(/databases/$(database)/documents/organizations/$(orgId)/mrn_registry/$(mrn)) &&
+        getAfter(/databases/$(database)/documents/organizations/$(orgId)/mrn_registry/$(mrn)).data.patientId == patientId;
+    }
+
+    function idRegisteredAfter(orgId, patientId, data) {
+      return existsAfter(/databases/$(database)/documents/organizations/$(orgId)/id_registry/$(data.idType + '_' + data.idNumber)) &&
+        getAfter(/databases/$(database)/documents/organizations/$(orgId)/id_registry/$(data.idType + '_' + data.idNumber)).data.patientId == patientId;
+    }
+
+    // An identity document, once on a file, never changes. A file without one
+    // may have one added later, by admin only (other updaters are limited to
+    // phone and email), and only together with its registry entry.
+    function idFieldsValidOnUpdate(orgId, patientId) {
+      return (('idNumber' in resource.data) &&
+              request.resource.data.get('idNumber', null) == resource.data.idNumber &&
+              request.resource.data.get('idType', null) == resource.data.get('idType', null)) ||
+             (!('idNumber' in resource.data) && hasNoIdFields(request.resource.data)) ||
+             (!('idNumber' in resource.data) && hasValidIdPair(request.resource.data) &&
+              idRegisteredAfter(orgId, patientId, request.resource.data));
+    }
+
     // 1. Organizations
     match /organizations/{orgId} {
       // Platform owner can create. Must contain name, createdAt, and firstAdminUid.
@@ -85,10 +124,17 @@ service cloud.firestore {
 
         allow list: if isOrgAdmin(orgId);
 
+        // Task 8: the MRN (and identity document, if given) must be registered
+        // in the same transaction, so neither can ever belong to two files.
         allow create: if isOrgAdmin(orgId) &&
           request.resource.data.keys().hasOnly([
-            'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'orgName', 'linkedUserId', 'createdAt'
+            'id', 'mrn', 'firstName', 'lastName', 'dob', 'gender', 'email', 'phone', 'orgName', 'linkedUserId', 'createdAt',
+            'idType', 'idNumber'
           ]) &&
+          isValidMrn(request.resource.data.get('mrn', null)) &&
+          mrnRegisteredAfter(orgId, patientId, request.resource.data.mrn) &&
+          (hasNoIdFields(request.resource.data) ||
+           (hasValidIdPair(request.resource.data) && idRegisteredAfter(orgId, patientId, request.resource.data))) &&
           request.resource.data.id == patientId &&
           ('orgName' in request.resource.data) && request.resource.data.orgName is string &&
           exists(/databases/$(database)/documents/organizations/$(orgId)) &&
@@ -110,8 +156,11 @@ service cloud.firestore {
         // - orgName is immutable (cannot change if provided)
         // - mrn, firstName, lastName must be non-empty strings if provided
         // - mrn cannot be removed if already set
+        // - Task 8: mrn is locked once set; identity document is locked once set
         allow update: if
           (!('id' in request.resource.data) || request.resource.data.id == patientId) &&
+          (!('mrn' in resource.data) || request.resource.data.get('mrn', null) == resource.data.mrn) &&
+          idFieldsValidOnUpdate(orgId, patientId) &&
           (('orgName' in resource.data) == ('orgName' in request.resource.data)) &&
           (!('orgName' in request.resource.data) || request.resource.data.orgName == resource.data.orgName) &&
           (!('mrn' in request.resource.data) || (request.resource.data.mrn is string && request.resource.data.mrn.size() > 0)) &&
@@ -244,6 +293,46 @@ service cloud.firestore {
                            onlyChanges(['status', 'discontinuedAt', 'discontinuedBy']);
           allow delete: if false;
         }
+      }
+
+      // Task 8: MRN registry. One document per MRN, create-only, pointing at
+      // the file that holds it. Admin only; never readable by clinical staff.
+      match /mrn_registry/{mrn} {
+        allow get: if isOrgAdmin(orgId);
+        allow list: if false;
+        allow create: if isOrgAdmin(orgId) &&
+          request.resource.data.keys().hasOnly(['patientId', 'createdAt']) &&
+          request.resource.data.patientId is string &&
+          existsAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(request.resource.data.patientId)) &&
+          getAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(request.resource.data.patientId)).data.mrn == mrn;
+        allow update, delete: if false;
+      }
+
+      // Task 8: identity document registry. Key is idType + '_' + idNumber.
+      // Create-only; must match the identity document on the file it points at.
+      match /id_registry/{idKey} {
+        allow get: if isOrgAdmin(orgId);
+        allow list: if false;
+        allow create: if isOrgAdmin(orgId) &&
+          request.resource.data.keys().hasOnly(['patientId', 'createdAt']) &&
+          request.resource.data.patientId is string &&
+          existsAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(request.resource.data.patientId)) &&
+          getAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(request.resource.data.patientId)).data.get('idType', '') + '_' +
+            getAfter(/databases/$(database)/documents/organizations/$(orgId)/patients/$(request.resource.data.patientId)).data.get('idNumber', '') == idKey;
+        allow update, delete: if false;
+      }
+
+      // Task 8: sequential MRN counter. Admin only; may only ever go up by one.
+      match /counters/{counterId} {
+        allow get: if isOrgAdmin(orgId);
+        allow list: if false;
+        allow create: if isOrgAdmin(orgId) && counterId == 'mrn' &&
+          request.resource.data.keys().hasOnly(['last']) &&
+          request.resource.data.last == 1;
+        allow update: if isOrgAdmin(orgId) && counterId == 'mrn' &&
+          request.resource.data.keys().hasOnly(['last']) &&
+          request.resource.data.last == resource.data.last + 1;
+        allow delete: if false;
       }
 
       // 3. Care teams in organization

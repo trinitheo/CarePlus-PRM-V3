@@ -19,6 +19,9 @@ export interface UserRecord {
 
 export type Gender = 'male' | 'female' | 'other' | 'undisclosed';
 
+/** Identity document used to tell apart people with the same name and DOB. */
+export type IdType = 'national_id' | 'drivers_permit';
+
 export interface PatientRecord {
   id: string;
   mrn: string;
@@ -31,6 +34,10 @@ export interface PatientRecord {
   orgName: string;
   linkedUserId?: string;
   createdAt: string;
+  /** Set together with idNumber, or not at all. Locked once set. */
+  idType?: IdType;
+  /** Stored normalised: capitals and digits only. */
+  idNumber?: string;
 }
 
 export interface PatientCareTeamMember {

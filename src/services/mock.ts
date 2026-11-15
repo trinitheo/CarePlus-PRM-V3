@@ -7,7 +7,27 @@ import type {
   VitalRecord,
   PrescriptionRecord
 } from '../types';
-import type { DataService, PatientLoadResult, StaffPatientRow, PatientChartData } from './types';
+import type {
+  DataService,
+  PatientLoadResult,
+  StaffPatientRow,
+  PatientChartData,
+  PatientFileDecision,
+  PatientIdentityInput,
+  NewPatientInput,
+} from './types';
+import type { IdType } from '../types';
+import {
+  classifyNameMatches,
+  cleanIdentityInput,
+  decidePatientFile,
+  formatMrn,
+  idRegistryKey,
+  isValidIdNumber,
+  normaliseIdNumber,
+  PatientFileError,
+  validateIdentityInput,
+} from './patientMatching';
 import type { SessionService, SessionState } from './session';
 import { CANONICAL_SEED } from './seed';
 
@@ -18,6 +38,11 @@ export class MockDataService implements DataService {
   private vitals: { orgId: string; patientId: string; record: VitalRecord }[];
   private notes: { orgId: string; patientId: string; record: ClinicalNote }[];
   private prescriptions: { orgId: string; patientId: string; record: PrescriptionRecord }[];
+  // Task 8: in-memory stand-ins for the registries and MRN counter (keys are `${orgId}/...`)
+  private orgNames = new Map<string, string>();
+  private mrnRegistry = new Map<string, string>();
+  private idRegistry = new Map<string, string>();
+  private mrnCounters = new Map<string, number>();
 
   constructor() {
     this.users = new Map();
@@ -36,6 +61,13 @@ export class MockDataService implements DataService {
     this.vitals = [];
     this.notes = [];
     this.prescriptions = [];
+    this.orgNames.clear();
+    this.mrnRegistry.clear();
+    this.idRegistry.clear();
+    this.mrnCounters.clear();
+    for (const org of CANONICAL_SEED.organizations) {
+      this.orgNames.set(org.id, org.data.name);
+    }
 
     // 1. First admins
     for (const fa of CANONICAL_SEED.firstAdmins) {
@@ -78,6 +110,7 @@ export class MockDataService implements DataService {
         orgId: p.orgId,
         patient: { ...p.entry.data },
       });
+      this.mrnRegistry.set(`${p.orgId}/${p.entry.data.mrn}`, p.entry.id);
     }
 
     // 5. Care teams
@@ -316,6 +349,73 @@ export class MockDataService implements DataService {
     }
 
     return result;
+  }
+
+  // ---- Task 8: admin patient files (same decision logic as Firestore) ----
+
+  private orgPatients(orgId: string): PatientRecord[] {
+    return Array.from(this.patients.values())
+      .filter((item) => item.orgId === orgId)
+      .map((item) => ({ ...item.patient }));
+  }
+
+  async searchPatientFiles(orgId: string, rawInput: PatientIdentityInput): Promise<PatientFileDecision> {
+    const errors = validateIdentityInput(rawInput);
+    if (errors.length > 0) throw new PatientFileError(errors.join(' '));
+    const input = cleanIdentityInput(rawInput);
+    let idHolder: PatientRecord | null = null;
+    if (input.idType && input.idNumber) {
+      const holderId = this.idRegistry.get(`${orgId}/${idRegistryKey(input.idType, input.idNumber)}`);
+      idHolder = holderId ? await this.getPatient(orgId, holderId) : null;
+    }
+    return decidePatientFile(input, idHolder, classifyNameMatches(this.orgPatients(orgId), input));
+  }
+
+  async createPatientFile(orgId: string, rawInput: NewPatientInput): Promise<PatientRecord> {
+    const input = cleanIdentityInput(rawInput);
+    const decision = await this.searchPatientFiles(orgId, input);
+    if (decision.kind !== 'can-create') {
+      throw new PatientFileError('A patient file cannot be created until the match is resolved.', decision);
+    }
+    const next = (this.mrnCounters.get(orgId) ?? 0) + 1;
+    const mrn = formatMrn(next);
+    if (this.mrnRegistry.has(`${orgId}/${mrn}`)) {
+      throw new PatientFileError(`${mrn} is already registered; the MRN counter is out of step.`);
+    }
+    const id = `patient_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const record: PatientRecord = {
+      id,
+      mrn,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      dob: input.dob,
+      gender: input.gender,
+      email: input.email.trim(),
+      phone: input.phone.trim(),
+      orgName: this.orgNames.get(orgId) ?? orgId,
+      createdAt: new Date().toISOString(),
+      ...(input.idType && input.idNumber ? { idType: input.idType, idNumber: input.idNumber } : {}),
+    };
+    this.mrnCounters.set(orgId, next);
+    this.patients.set(id, { orgId, patient: record });
+    this.mrnRegistry.set(`${orgId}/${mrn}`, id);
+    if (record.idType && record.idNumber) {
+      this.idRegistry.set(`${orgId}/${idRegistryKey(record.idType, record.idNumber)}`, id);
+    }
+    return { ...record };
+  }
+
+  async addPatientId(orgId: string, patientId: string, idType: IdType, rawIdNumber: string): Promise<PatientRecord> {
+    const idNumber = normaliseIdNumber(rawIdNumber);
+    if (!isValidIdNumber(idNumber)) throw new PatientFileError('ID number must be 3–30 letters or digits.');
+    const item = this.patients.get(patientId);
+    if (!item || item.orgId !== orgId) throw new PatientFileError('Patient file not found.');
+    if (item.patient.idNumber) throw new PatientFileError('This file already has an ID, and it cannot be changed.');
+    const key = `${orgId}/${idRegistryKey(idType, idNumber)}`;
+    if (this.idRegistry.has(key)) throw new PatientFileError('This ID is already on another patient file.');
+    item.patient = { ...item.patient, idType, idNumber };
+    this.idRegistry.set(key, patientId);
+    return { ...item.patient };
   }
 }
 
