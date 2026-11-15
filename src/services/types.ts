@@ -5,8 +5,12 @@ import type {
   CareTeamMemberRecord,
   ClinicalNote,
   VitalRecord,
-  PrescriptionRecord
+  PrescriptionRecord,
+  IdType
 } from '../types';
+import type { PatientFileDecision, PatientIdentityInput, NewPatientInput } from './patientMatching';
+
+export type { PatientFileDecision, PatientIdentityInput, NewPatientInput } from './patientMatching';
 
 export interface StaffPatientRow {
   patient: PatientRecord;
@@ -32,4 +36,10 @@ export interface DataService {
   getUser(userId: string): Promise<UserRecord | null>;
   getMyCareTeams(patientUid: string): Promise<PatientOrgCareTeam[]>;
   getPatientChart(orgId: string, patientId: string, uid: string): Promise<PatientChartData>;
+  /** Task 8 (admin): search by ID, then name + DOB. Must run before any file is created. */
+  searchPatientFiles(orgId: string, input: PatientIdentityInput): Promise<PatientFileDecision>;
+  /** Task 8 (admin): re-runs the search and creates the file only if it allows creation. */
+  createPatientFile(orgId: string, input: NewPatientInput): Promise<PatientRecord>;
+  /** Task 8 (admin): adds an identity document to a file that has none. */
+  addPatientId(orgId: string, patientId: string, idType: IdType, idNumber: string): Promise<PatientRecord>;
 }

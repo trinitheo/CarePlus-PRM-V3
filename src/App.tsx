@@ -4,7 +4,7 @@ import { Heart, Shield, LogOut } from 'lucide-react';
 import { sessionService, type SessionState } from './services';
 import { PatientPanel } from './components/PatientPanel';
 import { PatientCareTeamView } from './components/PatientCareTeamView';
-import { RolePlaceholder } from './components/RolePlaceholder';
+import { AdminPortal } from './components/admin/AdminPortal';
 import { PatientChartScreen } from './components/chart/PatientChartScreen';
 import { SignInScreen } from './components/SignInScreen';
 import { AccountNotSetUpScreen } from './components/AccountNotSetUpScreen';
@@ -137,9 +137,9 @@ const MainApp: React.FC = () => {
             <PatientPanel currentUser={currentUser} />
           ) : currentUser.role === 'patient' ? (
             <PatientCareTeamView currentUser={currentUser} />
-          ) : (
-            <RolePlaceholder currentUser={currentUser} />
-          )
+          ) : currentUser.role === 'admin' ? (
+            <AdminPortal currentUser={currentUser} />
+          ) : null
         ) : (
           <SignInScreen />
         )}

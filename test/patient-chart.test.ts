@@ -21,6 +21,20 @@ import { MockDataService } from '../src/services/mock.js';
 
 const PROJECT_ID = 'careplus-v2-chart-test';
 
+/**
+ * Task 8: an admin creates a patient file together with its MRN registry
+ * entry, as the rules require. When the MRN cannot be a registry key (missing
+ * or malformed), only the file is written.
+ */
+function createPatientWithMrn(db: any, orgId: string, patientId: string, data: Record<string, any>) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, `organizations/${orgId}/patients/${patientId}`), data);
+  if (typeof data.mrn === 'string' && /^[A-Za-z0-9-]{1,40}$/.test(data.mrn)) {
+    batch.set(doc(db, `organizations/${orgId}/mrn_registry/${data.mrn}`), { patientId, createdAt: '2026-03-01T00:00:00Z' });
+  }
+  return batch.commit();
+}
+
 describe('Task 7b: Patient Chart View & Data Service Integration', () => {
   let testEnv: RulesTestEnvironment;
 
@@ -70,7 +84,7 @@ describe('Task 7b: Patient Chart View & Data Service Integration', () => {
     for (const p of CANONICAL_SEED.patients) {
       const adminId = p.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
       const adminDb = testEnv.authenticatedContext(adminId).firestore();
-      await assertSucceeds(setDoc(doc(adminDb, `organizations/${p.orgId}/patients`, p.entry.id), {
+      await assertSucceeds(createPatientWithMrn(adminDb, p.orgId, p.entry.id, {
         ...p.entry.data
       }));
     }

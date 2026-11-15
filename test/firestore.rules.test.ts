@@ -28,6 +28,20 @@ import { getStaffPatients, getMyCareTeams, FirestoreDataService } from '../src/s
 
 const PROJECT_ID = 'careplus-v2-test';
 
+/**
+ * Task 8: an admin creates a patient file together with its MRN registry
+ * entry, as the rules require. When the MRN cannot be a registry key (missing
+ * or malformed), only the file is written.
+ */
+function createPatientWithMrn(db: any, orgId: string, patientId: string, data: Record<string, any>) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, `organizations/${orgId}/patients/${patientId}`), data);
+  if (typeof data.mrn === 'string' && /^[A-Za-z0-9-]{1,40}$/.test(data.mrn)) {
+    batch.set(doc(db, `organizations/${orgId}/mrn_registry/${data.mrn}`), { patientId, createdAt: '2026-03-01T00:00:00Z' });
+  }
+  return batch.commit();
+}
+
 describe('CarePlus v2 Firestore Security Rules', () => {
   let testEnv: RulesTestEnvironment;
 
@@ -310,7 +324,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
 
     it('ALLOW: admin can create a patient with required identity fields only', async () => {
       const db = testEnv.authenticatedContext('admin_1').firestore();
-      await assertSucceeds(setDoc(doc(db, 'organizations/clinic_a/patients/patient_new'), {
+      await assertSucceeds(createPatientWithMrn(db, 'clinic_a', 'patient_new', {
         id: 'patient_new',
         mrn: 'MRN-999',
         firstName: 'New',
@@ -702,7 +716,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     it('DENY: Clinic B admin cannot create a patient, care-team entry or user in Clinic A', async () => {
       const db = testEnv.authenticatedContext('admin_b').firestore();
       // Cannot create patient in Clinic A
-      await assertFails(setDoc(doc(db, 'organizations/clinic_a/patients/patient_forged'), {
+      await assertFails(createPatientWithMrn(db, 'clinic_a', 'patient_forged', {
         id: 'patient_forged',
         mrn: 'MRN-FORGED',
         firstName: 'Forged',
@@ -1009,7 +1023,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
   describe('Task 1c: Escalation Closure, Patient ID Binding & MRN Lifecycle', () => {
     it('ALLOW: admin creates a patient with no linkedUserId', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
-      await assertSucceeds(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_no_link'), {
+      await assertSucceeds(createPatientWithMrn(adminDb, 'clinic_a', 'patient_no_link', {
         id: 'patient_no_link',
         mrn: 'MRN-NOLINK-01',
         firstName: 'No',
@@ -1023,11 +1037,18 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       }));
     });
 
-    it('ALLOW: admin updates demographics (name, phone, mrn)', async () => {
+    // Task 8: MRN is locked once assigned. This test previously also changed the MRN.
+    it('ALLOW: admin updates demographics (name, phone)', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
       await assertSucceeds(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
         firstName: 'AliceUpdated',
-        phone: '555-987-6543',
+        phone: '555-987-6543'
+      }));
+    });
+
+    it('DENY: admin changes an MRN once assigned (Task 8)', async () => {
+      const adminDb = testEnv.authenticatedContext('admin_1').firestore();
+      await assertFails(updateDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_A'), {
         mrn: 'MRN-001-REV'
       }));
     });
@@ -1042,9 +1063,9 @@ describe('CarePlus v2 Firestore Security Rules', () => {
     it('DENY: admin creating patient missing required fields (mrn, firstName, lastName, dob)', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
       // Empty document
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty'), {}));
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_empty', {}));
       // Missing mrn
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_mrn'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_missing_mrn', {
         id: 'patient_missing_mrn',
         firstName: 'Pending',
         lastName: 'Onboarding',
@@ -1052,7 +1073,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         orgName: 'Clinic A'
       }));
       // Missing firstName
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_first'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_missing_first', {
         id: 'patient_missing_first',
         mrn: 'MRN-101',
         lastName: 'Onboarding',
@@ -1060,7 +1081,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         orgName: 'Clinic A'
       }));
       // Missing lastName
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_last'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_missing_last', {
         id: 'patient_missing_last',
         mrn: 'MRN-102',
         firstName: 'Pending',
@@ -1068,7 +1089,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         orgName: 'Clinic A'
       }));
       // Missing dob
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_dob'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_missing_dob', {
         id: 'patient_missing_dob',
         mrn: 'MRN-103',
         firstName: 'Pending',
@@ -1076,7 +1097,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         orgName: 'Clinic A'
       }));
       // Empty string mrn
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_mrn'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_empty_mrn', {
         id: 'patient_empty_mrn',
         mrn: '',
         firstName: 'Pending',
@@ -1085,7 +1106,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         orgName: 'Clinic A'
       }));
       // Empty string firstName
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_first'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_empty_first', {
         id: 'patient_empty_first',
         mrn: 'MRN-104',
         firstName: '',
@@ -1094,7 +1115,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
         orgName: 'Clinic A'
       }));
       // Empty string lastName
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_empty_last'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_empty_last', {
         id: 'patient_empty_last',
         mrn: 'MRN-105',
         firstName: 'Pending',
@@ -1148,7 +1169,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
 
     it('DENY: admin creating patient where data.id != patientId (path mismatch)', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_path_id'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_path_id', {
         id: 'different_id_field',
         mrn: 'MRN-PATH-1',
         firstName: 'Mismatch',
@@ -1175,7 +1196,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
 
     it('DENY: admin setting patient linkedUserId to their own uid on create', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_escalate_attempt'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_escalate_attempt', {
         id: 'patient_escalate_attempt',
         mrn: 'MRN-ESC-1',
         firstName: 'Escalation',
@@ -1388,7 +1409,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
       for (const p of CANONICAL_SEED.patients) {
         const adminId = p.orgId === 'clinic_b' ? 'admin_b' : 'admin_1';
         const adminDb = testEnv.authenticatedContext(adminId).firestore();
-        await assertSucceeds(setDoc(doc(adminDb, `organizations/${p.orgId}/patients`, p.entry.id), {
+        await assertSucceeds(createPatientWithMrn(adminDb, p.orgId, p.entry.id, {
           ...p.entry.data
         }));
       }
@@ -1419,7 +1440,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
 
     it('DENY: admin creates patient without orgName', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_missing_orgname'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_missing_orgname', {
         id: 'patient_missing_orgname',
         mrn: 'MRN-NO-ORGNAME',
         firstName: 'No',
@@ -1434,7 +1455,7 @@ describe('CarePlus v2 Firestore Security Rules', () => {
 
     it('DENY: admin creates patient with mismatched orgName', async () => {
       const adminDb = testEnv.authenticatedContext('admin_1').firestore();
-      await assertFails(setDoc(doc(adminDb, 'organizations/clinic_a/patients/patient_mismatch_orgname'), {
+      await assertFails(createPatientWithMrn(adminDb, 'clinic_a', 'patient_mismatch_orgname', {
         id: 'patient_mismatch_orgname',
         mrn: 'MRN-MISMATCH-ORGNAME',
         firstName: 'Mismatch',
